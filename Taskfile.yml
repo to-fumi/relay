@@ -1,0 +1,133 @@
+# https://taskfile.dev
+# ローカル・lefthook・CI はすべてここのタスクを呼ぶ。
+version: "3"
+
+vars:
+  GO_TOOL: go tool -modfile=tools/go.mod
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
+  setup:
+    desc: 依存パッケージを入れる
+    cmds:
+      - pnpm install --frozen-lockfile
+      - cd backend-go && go mod download && go mod download -modfile=tools/go.mod
+
+  # ---------- まとめて実行 ----------
+  check:
+    desc: CI と同じチェックをすべて実行する
+    cmds:
+      - task: api:lint
+      - task: gen:check
+      - task: web:check
+      - task: go:check
+
+  fmt:
+    desc: すべてを整形する
+    cmds:
+      - task: web:fmt
+      - task: go:fmt
+
+  gen:
+    desc: openapi.yaml から Go と TS のコードを生成する
+    cmds:
+      - task: web:gen
+      - task: go:gen
+
+  gen:check:
+    desc: 生成コードが openapi.yaml と一致しているか確認する
+    cmds:
+      - task: gen
+      - git diff --exit-code -- web/src/shared/api/generated backend-go/internal/api
+
+  # ---------- 開発 ----------
+  db:up:
+    desc: ローカルの PostgreSQL を起動する（ポートは RELAY_DB_PORT で変更できる）
+    cmds:
+      - docker compose up -d --wait db
+
+  db:down:
+    desc: ローカルの PostgreSQL を停止する
+    cmds:
+      - docker compose down
+
+  dev:api:
+    desc: API サーバーを起動する（backend-go/.env を読む）
+    dir: backend-go
+    dotenv: [.env]
+    cmds:
+      - go run ./cmd/relay
+
+  dev:web:
+    desc: Vite の開発サーバーを起動する
+    dir: web
+    cmds:
+      - pnpm dev
+
+  # ---------- API 仕様 ----------
+  api:lint:
+    desc: openapi.yaml を検証する
+    cmds:
+      - pnpm exec redocly lint api/openapi.yaml
+
+  # ---------- web ----------
+  web:gen:
+    dir: web
+    cmds:
+      - pnpm gen
+
+  web:fmt:
+    dir: web
+    cmds:
+      - pnpm fmt
+
+  web:check:
+    desc: Biome・型チェック・依存の向き・ビルド
+    dir: web
+    cmds:
+      - pnpm lint
+      - pnpm typecheck
+      - pnpm depcheck
+      - pnpm exec vite build
+
+  # ---------- backend-go ----------
+  go:gen:
+    dir: backend-go
+    cmds:
+      - go generate ./...
+
+  go:fmt:
+    dir: backend-go
+    cmds:
+      - "{{.GO_TOOL}} golangci-lint fmt ./..."
+
+  go:lint:
+    dir: backend-go
+    cmds:
+      - "{{.GO_TOOL}} golangci-lint run ./..."
+
+  go:test:
+    dir: backend-go
+    cmds:
+      - go test -race ./...
+
+  go:vuln:
+    dir: backend-go
+    cmds:
+      - "{{.GO_TOOL}} govulncheck ./..."
+
+  go:check:
+    desc: golangci-lint（depguard を含む）・テスト・脆弱性チェック
+    cmds:
+      - task: go:lint
+      - task: go:test
+      - task: go:vuln
+
+  go:build:
+    dir: backend-go
+    cmds:
+      - go build -o bin/relay ./cmd/relay

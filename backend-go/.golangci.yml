@@ -1,0 +1,121 @@
+version: "2"
+
+run:
+  modules-download-mode: readonly
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      module-path: relay
+    goimports:
+      local-prefixes:
+        - relay
+  exclusions:
+    paths:
+      - internal/api/api.gen.go
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - depguard
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - noctx
+    - revive
+    - sqlclosecheck
+    - unconvert
+    - usestdlibvars
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+    depguard:
+      rules:
+        # --- Clean Architecture：adapter → application → domain ---
+        domain:
+          files: ["**/internal/*/domain/**"]
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/google/uuid
+            # _test パッケージから自分自身を import するため（他モジュールの domain は *-module ルールで禁止）
+            - relay/internal/handoff/domain
+            - relay/internal/identity/domain
+          deny:
+            - pkg: net/http
+              desc: domain は HTTP に依存しない
+            - pkg: database/sql
+              desc: domain は DB に依存しない
+        handoff-application:
+          files: ["**/internal/handoff/application/**"]
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/google/uuid
+            - relay/internal/handoff/domain
+            - relay/internal/handoff/application
+          deny:
+            - pkg: net/http
+              desc: application は HTTP に依存しない
+            - pkg: database/sql
+              desc: application は DB に依存しない
+        identity-application:
+          files: ["**/internal/identity/application/**"]
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/google/uuid
+            - relay/internal/identity/domain
+            - relay/internal/identity/application
+          deny:
+            - pkg: net/http
+              desc: application は HTTP に依存しない
+            - pkg: database/sql
+              desc: application は DB に依存しない
+
+        # --- モジュール同士の直接の import を禁止する（main.go で注入する） ---
+        handoff-module:
+          files: ["**/internal/handoff/**"]
+          deny:
+            - pkg: relay/internal/identity
+              desc: 他モジュールは import しない。必要なら application にインターフェースを定義する
+            - pkg: relay/internal/analytics
+              desc: 他モジュールは import しない
+        identity-module:
+          files: ["**/internal/identity/**"]
+          deny:
+            - pkg: relay/internal/handoff
+              desc: 他モジュールは import しない
+            - pkg: relay/internal/analytics
+              desc: 他モジュールは import しない
+        analytics-module:
+          files: ["**/internal/analytics/**"]
+          deny:
+            - pkg: relay/internal/handoff
+              desc: 他モジュールは import しない。必要なら application にインターフェースを定義する
+            - pkg: relay/internal/identity
+              desc: 他モジュールは import しない
+        platform:
+          files: ["**/internal/platform/**"]
+          deny:
+            - pkg: relay/internal/handoff
+              desc: platform はどのモジュールにも依存しない
+            - pkg: relay/internal/identity
+              desc: platform はどのモジュールにも依存しない
+            - pkg: relay/internal/analytics
+              desc: platform はどのモジュールにも依存しない
+            - pkg: relay/internal/api
+              desc: platform は API の契約に依存しない
+  exclusions:
+    generated: strict
+    paths:
+      - internal/api/api.gen.go

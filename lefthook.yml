@@ -1,0 +1,25 @@
+# https://lefthook.dev
+# コミット前に、変更したファイルに関係するチェックだけを実行する。
+pre-commit:
+  parallel: true
+  jobs:
+    - name: web
+      root: web/
+      glob: "*.{ts,tsx,js,cjs,mjs,json,jsonc,css}"
+      run: pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+
+    - name: go
+      root: backend-go/
+      glob: "*.go"
+      run: go tool -modfile=tools/go.mod golangci-lint fmt ./... && go tool -modfile=tools/go.mod golangci-lint run ./...
+      stage_fixed: true
+
+    - name: api
+      glob: "api/*.yaml"
+      run: pnpm exec redocly lint api/openapi.yaml
+
+pre-push:
+  jobs:
+    - name: check
+      run: pnpm exec task check

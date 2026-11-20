@@ -1,0 +1,26 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommitsDisabled"],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 9am on monday"],
+  "postUpdateOptions": ["gomodTidy"],
+  "lockFileMaintenance": { "enabled": true },
+  "packageRules": [
+    {
+      "description": "Go の開発ツール（tools/go.mod）はまとめて更新する",
+      "matchFileNames": ["backend-go/tools/go.mod"],
+      "groupName": "go tools"
+    },
+    {
+      "description": "GitHub Actions はまとめて更新する",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "description": "patch と minor の devDependencies はまとめて更新する",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "dev dependencies (non-major)"
+    }
+  ]
+}

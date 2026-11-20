@@ -1,0 +1,225 @@
+openapi: 3.1.0
+info:
+  title: Relay API
+  version: 0.1.0
+  description: 備品の受け渡しを記録し、そのログを分析するための API。
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: /api
+security:
+  - bearerAuth: []
+tags:
+  - name: identity
+    description: ログイン中のユーザー
+  - name: handoff
+    description: 受け渡しの記録
+
+paths:
+  /me:
+    get:
+      operationId: getMe
+      summary: ログイン中のユーザーを取得する（初回は自動で登録する）
+      tags: [identity]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /handoff-tokens:
+    post:
+      operationId: issueHandoffToken
+      summary: 受け渡し用のQRトークンを発行する（渡す側）
+      tags: [handoff]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueHandoffTokenRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HandoffToken"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /handoffs:
+    post:
+      operationId: receiveHandoff
+      summary: QRトークンを読み取り、受け渡しを記録する（受け取る側）
+      tags: [handoff]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiveHandoffRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Handoff"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: トークンは使用済み
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: 自分自身には渡せない
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /me/handoffs:
+    get:
+      operationId: listMyHandoffs
+      summary: 自分が渡した・受け取った記録を新しい順に取得する
+      tags: [handoff]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Handoff"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: 入力またはトークンが不正、もしくは期限切れ
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unauthorized:
+      description: 認証されていない
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  schemas:
+    User:
+      type: object
+      required: [id, displayName, email, isAdmin]
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        email:
+          type: string
+        isAdmin:
+          type: boolean
+
+    UserSummary:
+      type: object
+      required: [id, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+
+    IssueHandoffTokenRequest:
+      type: object
+      required: [item, qty]
+      properties:
+        item:
+          type: string
+          minLength: 1
+          maxLength: 200
+        qty:
+          type: integer
+          minimum: 1
+
+    HandoffToken:
+      type: object
+      required: [token, expiresAt]
+      properties:
+        token:
+          type: string
+          description: QRに埋め込む署名付きトークン
+        expiresAt:
+          type: string
+          format: date-time
+
+    ReceiveHandoffRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    Handoff:
+      type: object
+      required: [id, from, to, item, qty, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        from:
+          $ref: "#/components/schemas/UserSummary"
+        to:
+          $ref: "#/components/schemas/UserSummary"
+        item:
+          type: string
+        qty:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details
+      required: [title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
