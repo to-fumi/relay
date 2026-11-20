@@ -8,7 +8,10 @@
 1. 渡す側：item（自由入力）と qty を入力し、QRを発行する
 2. 受け取る側：QRを読み取る → `from=発行者、to=読み取った人` としてログに記録する
 
-- QRの中身はサーバーが署名したトークン：`{ from, item, qty, jti, exp }`（有効期限は60秒程度）。トークンはどこにも保存しない
+- QRの中身はサーバーが署名した短いトークン（`handoff/adapter/token`）。トークンはどこにも保存しない
+  - 形式：`version(1) | jti(8) | from(16) | exp(uint32) | qty(uvarint) | item(UTF-8) | HMAC-SHA256の先頭12バイト` を Base32（パディングなし）にしたもの
+  - Base32 は QR の英数字モードに収まるので、QR を荒くできる（`LANケーブル` で 92 文字、バージョン4、33×33マス）。QR の誤り訂正レベルは L
+  - 有効期限は60秒程度
 - 読み取りのときに署名と期限を検証する。`from == to` は拒否する
 - 同じQRの二重記録は、`handoffs.jti` の一意制約で防ぐ
 
@@ -98,7 +101,12 @@ web/src/
 
 ## 技術スタック
 
-- **Frontend**：React 19、Vite 8、TypeScript 6.0（strict）、TanStack Query、React Router、MSAL React、QRの表示・読み取りライブラリ、Cytoscape.js。APIクライアントと型は @hey-api/openapi-ts で生成する
+- **Frontend**：React 19、Vite 8、TypeScript 6.0（strict）、TanStack Query、React Router、MSAL React、qrcode.react（表示）、@yudiel/react-qr-scanner（読み取り）、Cytoscape.js。APIクライアントと型は @hey-api/openapi-ts で生成する
+- **UI**：Tailwind CSS v4（`@tailwindcss/vite`）、lucide-react（アイコン）。スマホを前提にした1カラム（`max-w-lg`）と下部タブ。ダークモードは `prefers-color-scheme` に従う
+  - className の結合は `shared/lib` の `cn`（tailwind-merge で衝突を解決する）を使う
+  - 共通の UI 部品は `shared/ui`（Button、Card、Field、Alert、EmptyState、PageHeader）
+  - 日時は `shared/lib` の `formatDateTime` などで ja-JP 形式にする
+  - 「渡す」以外の画面は `React.lazy` で遅延読み込みする
 - **Backend**：Go 1.27（`go.mod` の `toolchain` で patch バージョンまで固定する。標準ライブラリの net/http、oapi-codegen の strict-server、pgx、goose、golang-jwt）、PostgreSQL 18
 - **Node**：24（`.node-version`）、pnpm（`packageManager` で固定する）
 - **配置**：SPAはAPIサーバーから一緒に配信し、1つのコンテナにまとめる

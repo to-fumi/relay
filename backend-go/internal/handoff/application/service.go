@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
 	"relay/internal/handoff/domain"
@@ -51,9 +53,9 @@ func (s *Service) IssueToken(_ context.Context, from uuid.UUID, item string, qty
 	if err != nil {
 		return IssuedToken{}, err
 	}
-	exp := s.now().Add(s.ttl)
+	exp := s.now().Add(s.ttl).Truncate(time.Second)
 	token, err := s.signer.Sign(TokenClaims{
-		JTI:       uuid.NewString(),
+		JTI:       newJTI(),
 		From:      from,
 		Item:      string(it),
 		Qty:       int(q),
@@ -129,4 +131,11 @@ func (s *Service) toViews(ctx context.Context, hs []domain.Handoff) ([]HandoffVi
 		}
 	}
 	return views, nil
+}
+
+// newJTI はトークンの ID（8 バイトの乱数を 16 進数にしたもの）を作る。
+func newJTI() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b) // crypto/rand.Read は失敗しない
+	return hex.EncodeToString(b)
 }

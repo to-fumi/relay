@@ -1,6 +1,7 @@
 import { InteractionType } from "@azure/msal-browser";
 import { MsalAuthenticationTemplate, MsalProvider } from "@azure/msal-react";
 import { type FormEvent, type ReactNode, useState } from "react";
+import { Button, Card, Field } from "../ui";
 import { authMode } from "./config";
 import { getDevEmail, setDevEmail } from "./dev";
 import { loginRequest, msalInstance } from "./msal";
@@ -33,10 +34,44 @@ function DevAuthGate({ children }: { children: ReactNode }) {
   };
 
   return (
-    <form onSubmit={onSubmit} style={{ padding: 16 }}>
-      <h1>Relay（開発用ログイン）</h1>
-      <input type="email" value={input} onChange={(e) => setInput(e.target.value)} placeholder="you@example.com" />
-      <button type="submit">ログイン</button>
-    </form>
+    <div className="flex min-h-dvh flex-col items-center justify-center px-4">
+      <div className="mb-8 text-center">
+        <Logo />
+        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">備品の受け渡しを記録する</p>
+      </div>
+      <Card className="w-full max-w-sm">
+        <form onSubmit={onSubmit} className="space-y-4">
+          <Field
+            id="dev-email"
+            label="メールアドレス"
+            type="email"
+            autoComplete="email"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="you@example.com"
+            required
+          />
+          <Button type="submit" block>
+            ログイン
+          </Button>
+        </form>
+      </Card>
+      <p className="mt-4 rounded-full bg-amber-100 px-3 py-1 font-medium text-amber-800 text-xs dark:bg-amber-950 dark:text-amber-300">
+        開発用ログイン（AUTH_MODE=dev）
+      </p>
+    </div>
+  );
+}
+
+export function Logo() {
+  return (
+    <span className="inline-flex items-center gap-2 font-bold text-2xl tracking-tight">
+      <span className="grid size-9 place-items-center rounded-xl bg-indigo-600 text-white">
+        <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden>
+          <path d="M4 17 L10 7 L14 13 L20 7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+      Relay
+    </span>
   );
 }

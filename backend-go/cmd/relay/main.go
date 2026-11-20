@@ -65,7 +65,7 @@ func run(ctx context.Context) error {
 	// handoff（UserDirectory には identity のサービスを注入する）
 	handoffSvc := handoffapp.NewService(
 		handoffpg.NewRepository(pool),
-		handofftoken.NewHMACSigner(cfg.HandoffTokenSecret),
+		handofftoken.NewCompactSigner(cfg.HandoffTokenSecret),
 		identitySvc,
 		cfg.HandoffTokenTTL,
 		time.Now,

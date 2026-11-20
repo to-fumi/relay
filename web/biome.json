@@ -1,6 +1,11 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true, "root": ".." },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true,
+    "root": ".."
+  },
   "files": {
     "includes": ["**", "!src/shared/api/generated"]
   },
@@ -26,6 +31,15 @@
   },
   "assist": {
     "enabled": true,
-    "actions": { "source": { "organizeImports": "on" } }
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   }
 }

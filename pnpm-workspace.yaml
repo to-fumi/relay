@@ -6,3 +6,5 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@tanstack/query-core@5.108.2'
   - '@tanstack/react-query@5.108.2'
+  - lucide-react@1.77.0
+  - tailwind-merge@3.7.1
