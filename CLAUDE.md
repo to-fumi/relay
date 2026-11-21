@@ -164,3 +164,9 @@ pnpm task check              # CI と同じチェックをすべて実行する
 - **CI**：GitHub Actions。paths フィルターで、変更されたディレクトリのジョブだけを実行する
 - **依存の更新**：Renovate
 - **改行コード**：LF に統一する（`.gitattributes` に `* text=auto eol=lf`、`biome.json` に `formatter.lineEnding: "lf"`）
+
+## AI との開発
+
+- 作業の進め方（ブランチ、完了の条件、PR の書き方、人に確かめるとき）は `.claude/rules/workflow.md` に書く（Claude Code が自動で読む）
+- AI に許す操作と、確認を求める操作は `.claude/settings.json` に書く
+- Issue と PR の形は `.github/ISSUE_TEMPLATE/` と `.github/pull_request_template.md`

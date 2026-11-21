@@ -8,3 +8,7 @@ coverage/
 *.log
 .DS_Store
 /backend-go/bin/
+# 画面の確認などで AI や人が作るファイル（スクショ、E2E の結果）
+/artifacts/
+test-results/
+playwright-report/
