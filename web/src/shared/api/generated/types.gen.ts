@@ -19,6 +19,18 @@ export type UserSummary = {
 export type IssueHandoffTokenRequest = {
     item: string;
     qty: number;
+    /**
+     * 返却期限（この日の終わりまで）。省略すると返却の必要がない受け渡しになる
+     */
+    dueDate?: string;
+};
+
+export type IssueReturnTokenRequest = {
+    handoffId: string;
+};
+
+export type ReturnHandoffRequest = {
+    token: string;
 };
 
 export type HandoffToken = {
@@ -40,6 +52,14 @@ export type Handoff = {
     item: string;
     qty: number;
     createdAt: string;
+    /**
+     * 返却期限。返却の必要がない受け渡しにはない
+     */
+    dueDate?: string;
+    /**
+     * 返却された日時。まだ返却されていなければない
+     */
+    returnedAt?: string;
 };
 
 /**
@@ -142,6 +162,109 @@ export type ReceiveHandoffResponses = {
 };
 
 export type ReceiveHandoffResponse = ReceiveHandoffResponses[keyof ReceiveHandoffResponses];
+
+export type IssueReturnTokenData = {
+    body: IssueReturnTokenRequest;
+    path?: never;
+    query?: never;
+    url: '/return-tokens';
+};
+
+export type IssueReturnTokenErrors = {
+    /**
+     * 入力またはトークンが不正、もしくは期限切れ
+     */
+    400: Problem;
+    /**
+     * 認証されていない
+     */
+    401: Problem;
+    /**
+     * 記録が見つからない
+     */
+    404: Problem;
+    /**
+     * すでに返却済み
+     */
+    409: Problem;
+};
+
+export type IssueReturnTokenError = IssueReturnTokenErrors[keyof IssueReturnTokenErrors];
+
+export type IssueReturnTokenResponses = {
+    /**
+     * Created
+     */
+    201: HandoffToken;
+};
+
+export type IssueReturnTokenResponse = IssueReturnTokenResponses[keyof IssueReturnTokenResponses];
+
+export type ReturnHandoffData = {
+    body: ReturnHandoffRequest;
+    path?: never;
+    query?: never;
+    url: '/returns';
+};
+
+export type ReturnHandoffErrors = {
+    /**
+     * 入力またはトークンが不正、もしくは期限切れ
+     */
+    400: Problem;
+    /**
+     * 認証されていない
+     */
+    401: Problem;
+    /**
+     * 貸した本人ではない
+     */
+    403: Problem;
+    /**
+     * 記録が見つからない
+     */
+    404: Problem;
+    /**
+     * すでに返却済み
+     */
+    409: Problem;
+};
+
+export type ReturnHandoffError = ReturnHandoffErrors[keyof ReturnHandoffErrors];
+
+export type ReturnHandoffResponses = {
+    /**
+     * OK
+     */
+    200: Handoff;
+};
+
+export type ReturnHandoffResponse = ReturnHandoffResponses[keyof ReturnHandoffResponses];
+
+export type ListMyOutstandingHandoffsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/me/outstanding-handoffs';
+};
+
+export type ListMyOutstandingHandoffsErrors = {
+    /**
+     * 認証されていない
+     */
+    401: Problem;
+};
+
+export type ListMyOutstandingHandoffsError = ListMyOutstandingHandoffsErrors[keyof ListMyOutstandingHandoffsErrors];
+
+export type ListMyOutstandingHandoffsResponses = {
+    /**
+     * OK
+     */
+    200: Array<Handoff>;
+};
+
+export type ListMyOutstandingHandoffsResponse = ListMyOutstandingHandoffsResponses[keyof ListMyOutstandingHandoffsResponses];
 
 export type ListMyHandoffsData = {
     body?: never;

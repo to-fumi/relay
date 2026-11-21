@@ -1,105 +1,123 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type IScannerError, Scanner } from "@yudiel/react-qr-scanner";
-import { CircleCheck, ScanLine } from "lucide-react";
-import { useState } from "react";
-import { listMyHandoffsQueryKey, receiveHandoffMutation } from "../../shared/api";
-import { formatDateTime, problemStatus } from "../../shared/lib";
-import { Alert, Button, Card, PageHeader } from "../../shared/ui";
+import { CalendarClock, CircleCheck, CornerDownLeft, Package, ScanLine, User } from "lucide-react";
+import {
+  type Handoff,
+  listMyHandoffsQueryKey,
+  listMyOutstandingHandoffsQueryKey,
+  receiveHandoffMutation,
+  returnHandoffMutation,
+} from "../../shared/api";
+import { formatTime, problemStatus, problemType } from "../../shared/lib";
+import { Alert, Card, DueBadge, Fab, IconRow, IconRows } from "../../shared/ui";
+import { QrScanner } from "../../shared/ui/QrScanner";
 
-// ライブラリの既定値は高さの最小が 640px で、640x480 のカメラが起動しないため、希望値だけを指定する
-const cameraConstraints: MediaTrackConstraints = {
-  facingMode: "environment",
-  width: { ideal: 1280 },
-  height: { ideal: 720 },
+/** 受け渡し用の API に返却QRを渡したときの Problem の type（そのときは返却として記録し直す） */
+const returnTokenProblem = "urn:relay:problem:return-token";
+
+const receiveErrors: Record<number, string> = {
+  400: "無効、または期限切れのQRです",
+  409: "読み取り済みのQRです",
+  422: "自分のQRは読み取れません",
 };
 
-const errorMessages: Record<number, string> = {
-  400: "QRが無効か、有効期限が切れています。相手にもう一度発行してもらってください。",
-  409: "このQRはすでに読み取られています。",
-  422: "自分が発行したQRは読み取れません。",
+const returnErrors: Record<number, string> = {
+  400: "無効、または期限切れのQRです",
+  403: "あなたが送ったものではありません",
+  404: "見つかりません",
+  409: "返却済みです",
 };
 
+/** 受け取る：相手の受け渡しQRを読み取る。返却QRを読んだときは、返却として記録する */
 export function ReceivePage() {
   const queryClient = useQueryClient();
-  const [cameraError, setCameraError] = useState<IScannerError | null>(null);
+  const invalidate = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: listMyHandoffsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: listMyOutstandingHandoffsQueryKey() }),
+    ]);
+  const ret = useMutation({ ...returnHandoffMutation(), onSuccess: invalidate });
   const receive = useMutation({
     ...receiveHandoffMutation(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: listMyHandoffsQueryKey() }),
+    onSuccess: invalidate,
+    // 返却QRだったときは、同じトークンで返却を記録する
+    onError: (error, variables) => {
+      if (problemType(error) === returnTokenProblem) ret.mutate({ body: variables.body });
+    },
   });
 
+  const pending = receive.isPending || ret.isPending;
+  const reset = () => {
+    receive.reset();
+    ret.reset();
+  };
   const onScan = (token: string) => {
-    if (receive.isPending || receive.isSuccess) return;
+    if (pending || receive.isSuccess || ret.isSuccess) return;
+    reset();
     receive.mutate({ body: { token } });
   };
 
-  if (receive.data) {
-    const h = receive.data;
-    return (
-      <section>
-        <PageHeader title="受け取る" />
-        <Card className="flex flex-col items-center gap-4 py-8 text-center">
-          <div className="grid size-16 place-items-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
-            <CircleCheck className="size-9" aria-hidden />
-          </div>
-          <div>
-            <p className="font-bold text-xl">受け取りました</p>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{formatDateTime(h.createdAt)}</p>
-          </div>
-          <dl className="w-full divide-y divide-zinc-100 rounded-xl bg-zinc-50 text-left text-sm dark:divide-zinc-800 dark:bg-zinc-950">
-            <Row label="渡した人" value={h.from.displayName} />
-            <Row label="品目" value={h.item} />
-            <Row label="数量" value={String(h.qty)} />
-          </dl>
-          <Button block onClick={() => receive.reset()}>
-            <ScanLine className="size-5" aria-hidden />
-            続けて読み取る
-          </Button>
-        </Card>
-      </section>
-    );
-  }
+  if (receive.data) return <Done handoff={receive.data} kind="received" onNext={reset} />;
+  if (ret.data) return <Done handoff={ret.data} kind="returned" onNext={reset} />;
 
-  const status = problemStatus(receive.error);
+  const isReturn = problemType(receive.error) === returnTokenProblem;
+  const errorMessage = isReturn
+    ? ret.isError && ((returnErrors[problemStatus(ret.error) ?? 0] ?? "記録できませんでした") as string)
+    : receive.isError && (receiveErrors[problemStatus(receive.error) ?? 0] ?? "記録できませんでした");
 
   return (
     <section>
-      <PageHeader title="受け取る" description="相手が表示したQRを、枠の中に映してください。" />
-      <div className="overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-zinc-200 dark:ring-zinc-800">
-        <Scanner
-          constraints={cameraConstraints}
-          onScan={(codes) => codes[0] && onScan(codes[0].rawValue)}
-          onError={(e) => {
-            console.error("scanner error", e.kind, e.message, e.cause);
-            setCameraError(e);
-          }}
-          paused={receive.isPending}
-          components={{ finder: true }}
-          styles={{ container: { aspectRatio: "1 / 1" } }}
-        />
-      </div>
-      {cameraError && (
-        <div className="mt-4">
-          <Alert>カメラを起動できませんでした。ブラウザのカメラの許可を確認してください。（{cameraError.kind}）</Alert>
-        </div>
-      )}
-      {receive.isPending && <p className="mt-4 text-center text-sm text-zinc-500">記録しています…</p>}
-      {receive.isError && (
-        <div className="mt-4 space-y-3">
-          <Alert>{(status && errorMessages[status]) ?? "記録できませんでした。もう一度お試しください。"}</Alert>
-          <Button variant="secondary" block onClick={() => receive.reset()}>
-            もう一度読み取る
-          </Button>
+      <QrScanner onScan={onScan} paused={pending} />
+      {pending && <p className="mt-6 text-center text-sm text-zinc-500">…</p>}
+      {errorMessage && (
+        <div className="mt-6">
+          <Alert>{errorMessage}</Alert>
+          <Fab label="もう一度読み取る" onClick={reset}>
+            <ScanLine aria-hidden />
+          </Fab>
         </div>
       )}
     </section>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+/** 記録できたとき。受け取り：左上に ✓、返却：左上に ↩ */
+function Done({ handoff: h, kind, onNext }: { handoff: Handoff; kind: "received" | "returned"; onNext: () => void }) {
+  const returned = kind === "returned";
+  const Icon = returned ? CornerDownLeft : CircleCheck;
+  const at = returned ? h.returnedAt : h.createdAt;
   return (
-    <div className="flex justify-between gap-4 px-4 py-3">
-      <dt className="text-zinc-500 dark:text-zinc-400">{label}</dt>
-      <dd className="truncate font-medium">{value}</dd>
-    </div>
+    <section>
+      <Card className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div
+            className={
+              returned
+                ? "flex items-center gap-2 text-amber-600 dark:text-amber-400"
+                : "flex items-center gap-2 text-emerald-600 dark:text-emerald-400"
+            }
+          >
+            <Icon className="size-8" aria-hidden />
+            <span className="font-bold text-lg">{returned ? "返却" : "完了"}</span>
+          </div>
+          {at && <span className="text-sm text-zinc-500 tabular-nums dark:text-zinc-400">{formatTime(at)}</span>}
+        </div>
+        <IconRows>
+          <IconRow icon={User} label={returned ? "返した人" : "送った人"}>
+            {returned ? h.to.displayName : h.from.displayName}
+          </IconRow>
+          <IconRow icon={Package} label="品目と数量">
+            {h.item} <span className="tabular-nums">×{h.qty}</span>
+          </IconRow>
+          {!returned && h.dueDate && (
+            <IconRow icon={CalendarClock} label="返却期限">
+              <DueBadge dueDate={h.dueDate} className="text-sm" />
+            </IconRow>
+          )}
+        </IconRows>
+        <Fab label="続けて読み取る" onClick={onNext}>
+          <ScanLine aria-hidden />
+        </Fab>
+      </Card>
+    </section>
   );
 }

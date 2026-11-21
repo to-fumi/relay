@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetMeData, GetMeErrors, GetMeResponses, IssueHandoffTokenData, IssueHandoffTokenErrors, IssueHandoffTokenResponses, ListMyHandoffsData, ListMyHandoffsErrors, ListMyHandoffsResponses, ReceiveHandoffData, ReceiveHandoffErrors, ReceiveHandoffResponses } from './types.gen';
+import type { GetMeData, GetMeErrors, GetMeResponses, IssueHandoffTokenData, IssueHandoffTokenErrors, IssueHandoffTokenResponses, IssueReturnTokenData, IssueReturnTokenErrors, IssueReturnTokenResponses, ListMyHandoffsData, ListMyHandoffsErrors, ListMyHandoffsResponses, ListMyOutstandingHandoffsData, ListMyOutstandingHandoffsErrors, ListMyOutstandingHandoffsResponses, ReceiveHandoffData, ReceiveHandoffErrors, ReceiveHandoffResponses, ReturnHandoffData, ReturnHandoffErrors, ReturnHandoffResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -42,6 +42,8 @@ export const issueHandoffToken = <ThrowOnError extends boolean = false>(options:
 
 /**
  * QRトークンを読み取り、受け渡しを記録する（受け取る側）
+ *
+ * 返却用のQRトークンを渡したときは、type が `urn:relay:problem:return-token` の 400 を返す（返却は /returns で記録する）。
  */
 export const receiveHandoff = <ThrowOnError extends boolean = false>(options: Options<ReceiveHandoffData, ThrowOnError>): RequestResult<ReceiveHandoffResponses, ReceiveHandoffErrors, ThrowOnError> => (options.client ?? client).post<ReceiveHandoffResponses, ReceiveHandoffErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -51,6 +53,43 @@ export const receiveHandoff = <ThrowOnError extends boolean = false>(options: Op
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * 返却用のQRトークンを発行する（借りた側）
+ *
+ * 返却期限付きで受け取った記録について、返却用のQRトークンを発行する。貸した側がこれを読み取ると返却済みになる。
+ */
+export const issueReturnToken = <ThrowOnError extends boolean = false>(options: Options<IssueReturnTokenData, ThrowOnError>): RequestResult<IssueReturnTokenResponses, IssueReturnTokenErrors, ThrowOnError> => (options.client ?? client).post<IssueReturnTokenResponses, IssueReturnTokenErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/return-tokens',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * 返却用のQRトークンを読み取り、返却を記録する（貸した側）
+ */
+export const returnHandoff = <ThrowOnError extends boolean = false>(options: Options<ReturnHandoffData, ThrowOnError>): RequestResult<ReturnHandoffResponses, ReturnHandoffErrors, ThrowOnError> => (options.client ?? client).post<ReturnHandoffResponses, ReturnHandoffErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/returns',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * 返却期限付きでまだ返却されていない記録（貸している・借りている）を、期限が近い順に取得する
+ */
+export const listMyOutstandingHandoffs = <ThrowOnError extends boolean = false>(options?: Options<ListMyOutstandingHandoffsData, ThrowOnError>): RequestResult<ListMyOutstandingHandoffsResponses, ListMyOutstandingHandoffsErrors, ThrowOnError> => (options?.client ?? client).get<ListMyOutstandingHandoffsResponses, ListMyOutstandingHandoffsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/me/outstanding-handoffs',
+    ...options
 });
 
 /**

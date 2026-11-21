@@ -5,24 +5,31 @@
 ## 機能
 
 ### 受け渡しの記録（QR）
-1. 渡す側：item（自由入力）と qty を入力し、QRを発行する
+1. 渡す側：item（自由入力）と qty、任意で返却期限（明日・1週間・任意の日付）を入力し、QRを発行する
 2. 受け取る側：QRを読み取る → `from=発行者、to=読み取った人` としてログに記録する
 
+返却期限がない受け渡しはログに残るだけ。返却期限がある受け渡しは、返却されるまで返却タブの「返す」（自分が受け取ったもの）と「待ち」（自分が送ったもの）のリストに入る。
+
+受け渡しは 2 人が同時に行うので、受け渡しタブ（⇄）に「送る」（QR を出す）と「受け取る」（QR を読む）を並べる。返却は返却タブにまとめる。
+
+- 返却期限は日付のみで、その日の終わりまで。発行のときに今日（日本時間）以降であることを確かめる
+- 返却もQRで行う：借りた側（to）が返却タブの「返す」で返却QRを発行する（`POST /return-tokens`）→ 貸した側（from）が返却タブの「待ち」の「読取」で読み取る（`POST /returns`）→ `returned_at` を記録する
+- 間違えて「受け取る」で返却QRを読んだときも記録できるようにする：API が type `urn:relay:problem:return-token` の 400 を返すので、同じトークンで `POST /returns` を呼び直す
+
 - QRの中身はサーバーが署名した短いトークン（`handoff/adapter/token`）。トークンはどこにも保存しない
-  - 形式：`version(1) | jti(8) | from(16) | exp(uint32) | qty(uvarint) | item(UTF-8) | HMAC-SHA256の先頭12バイト` を Base32（パディングなし）にしたもの
-  - Base32 は QR の英数字モードに収まるので、QR を荒くできる（`LANケーブル` で 92 文字、バージョン4、33×33マス）。QR の誤り訂正レベルは L
+  - 受け渡し：`tag(1)=2 | jti(8) | from(16) | exp(uint32) | due(uint16、1970-01-01からの日数、0は期限なし) | qty(uvarint) | item(UTF-8) | HMAC-SHA256の先頭12バイト` を Base32（パディングなし）にしたもの
+  - 返却：`tag(1)=3 | handoff_id(16) | exp(uint32) | HMAC-SHA256の先頭12バイト`（53 文字）
+  - Base32 は QR の英数字モードに収まるので、QR を荒くできる（`LANケーブル` で 95 文字、バージョン4、33×33マス）。QR の誤り訂正レベルは L
   - 有効期限は60秒程度
 - 読み取りのときに署名と期限を検証する。`from == to` は拒否する
 - 同じQRの二重記録は、`handoffs.jti` の一意制約で防ぐ
 
 ### 閲覧・分析（全ユーザー）
-- 自分の履歴
-- 全体とグループの受け渡しの流れ、分析（集計内容は別途決める）
-- 関係図（人を点、受け渡しを線として表示する。Cytoscape.js）
+- 自分の履歴（操作の記録。送った・受け取った・返した・返ってきたを時刻順に並べる。返却期限は出さない）
+- 全体とグループの受け渡しの流れ、分析、関係図（Cytoscape.js）は一旦なし（画面とタブを外している。作るときは `features/analytics` に置く）
 
 ### 管理（管理者）
-- ユーザーとグループの管理（グループはアプリ内で管理する）
-- ログの削除
+- ユーザーとグループの管理、ログの削除は一旦なし（画面とタブを外している。作るときは `features/admin` に置き、管理者だけに下部タブを出す）
 
 ユーザーは初回ログイン時に自動で登録する。最初の管理者は環境変数 `ADMIN_EMAILS` で指定する。
 
@@ -32,8 +39,10 @@
 users        id, entra_oid(unique), display_name, email, is_admin, created_at
 groups       id, name
 user_groups  user_id, group_id
-handoffs     id, jti(unique), from_user, to_user, item(text), qty, created_at
+handoffs     id, jti(unique), from_user, to_user, item(text), qty, created_at, due_date(date, null), returned_at(null)
 ```
+
+`returned_at` は `due_date` があるときだけ入る。
 
 グループごとの集計は、今の所属で行う。
 
@@ -41,7 +50,9 @@ handoffs     id, jti(unique), from_user, to_user, item(text), qty, created_at
 
 - Entra ID。React（MSAL React）でアクセストークンを取得し、`Authorization: Bearer` ヘッダーで送る
 - バックエンドはJWTの署名、iss、aud、exp を検証する
-- MSALのトークンは `sessionStorage` に保存する
+- MSALのトークンは `sessionStorage` に保存する（タブを閉じれば消える）
+- ログアウトのボタンは置かない。アクセストークンは MSAL が自動で更新し、更新できないとき（`InteractionRequiredAuthError`）や API が 401 を返したときは、保存済みのトークンを消してログインし直してもらう（`shared/auth` の `expireSession`）
+- 開発用ログイン（`AUTH_MODE=dev`）も 12 時間で期限切れにし、期限切れのものは読むときに消す
 
 ## アーキテクチャ
 
@@ -90,9 +101,8 @@ web/src/
 ├── features/
 │   ├── handoff-issue/     # QR発行
 │   ├── handoff-receive/   # QR読み取り
-│   ├── history/           # 自分の履歴
-│   ├── analytics/         # 流れ、分析、関係図
-│   └── admin/             # ユーザーとグループの管理
+│   ├── returns/           # 返却リスト（返す・待ち）、返却QRの発行と読み取り
+│   └── history/           # 自分の履歴
 └── shared/         # 生成したAPIクライアント、UI部品、共通の関数
 ```
 
@@ -104,9 +114,14 @@ web/src/
 - **Frontend**：React 19、Vite 8、TypeScript 6.0（strict）、TanStack Query、React Router、MSAL React、qrcode.react（表示）、@yudiel/react-qr-scanner（読み取り）、Cytoscape.js。APIクライアントと型は @hey-api/openapi-ts で生成する
 - **UI**：Tailwind CSS v4（`@tailwindcss/vite`）、lucide-react（アイコン）。スマホを前提にした1カラム（`max-w-lg`）と下部タブ。ダークモードは `prefers-color-scheme` に従う
   - className の結合は `shared/lib` の `cn`（tailwind-merge で衝突を解決する）を使う
-  - 共通の UI 部品は `shared/ui`（Button、Card、Field、Alert、EmptyState、PageHeader）
+  - 文章は極力書かない。説明文や補足は置かず、アイコンで伝えられるものはアイコンにする（アイコンだけの操作には `aria-label` を付ける）
+  - 視線が Z 字（左 → 右 → 左下 → 右）に流れるように並べる。各行は左に主な情報（品目・相手など）、右に値や操作（数量・期限・ボタンなど）を置く。見出しは左にタイトル、右に操作
+  - 共通の UI 部品は `shared/ui`（Button、IconButton、Fab、Card、Field、Alert、EmptyState、PageHeader、IconRow、DueBadge、TokenQr。カメラの QrScanner は重いので `shared/ui/QrScanner` から直接 import する）
   - 日時は `shared/lib` の `formatDateTime` などで ja-JP 形式にする
-  - 「渡す」以外の画面は `React.lazy` で遅延読み込みする
+  - 「送る」以外の画面は `React.lazy` で遅延読み込みする
+  - 下部タブは「⇄ 受け渡し／↩ 返却／履歴」。タブの中は上の切り替えで分ける（受け渡しは「送る／受け取る」、返却は「返す／待ち」。`app/HandoffLayout`、`app/ReturnLayout`）
+  - 画面の主な操作（QR を発行、返却QRを読み取る、続けて読み取る）は、右下に浮かせたアイコンだけの丸いボタン（`shared/ui` の `Fab`）にする。「受け取る」はカメラがすぐ動くので、読み取り中のボタンは置かない
+  - 1 画面の機能は少ないので、余白は広めにとる（カードは `p-6`、見出しの下は `mb-8`）。入力は中身に合った大きさにする（例：数量は右寄せの小さなステッパー）
 - **Backend**：Go 1.27（`go.mod` の `toolchain` で patch バージョンまで固定する。標準ライブラリの net/http、oapi-codegen の strict-server、pgx、goose、golang-jwt）、PostgreSQL 18
 - **Node**：24（`.node-version`）、pnpm（`packageManager` で固定する）
 - **配置**：SPAはAPIサーバーから一緒に配信し、1つのコンテナにまとめる

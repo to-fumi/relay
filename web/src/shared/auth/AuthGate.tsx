@@ -37,7 +37,6 @@ function DevAuthGate({ children }: { children: ReactNode }) {
     <div className="flex min-h-dvh flex-col items-center justify-center px-4">
       <div className="mb-8 text-center">
         <Logo />
-        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">備品の受け渡しを記録する</p>
       </div>
       <Card className="w-full max-w-sm">
         <form onSubmit={onSubmit} className="space-y-4">

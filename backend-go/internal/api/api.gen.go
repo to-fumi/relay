@@ -20,12 +20,18 @@ import (
 
 // Handoff defines model for Handoff.
 type Handoff struct {
-	CreatedAt time.Time          `json:"createdAt"`
-	From      UserSummary        `json:"from"`
-	Id        openapi_types.UUID `json:"id"`
-	Item      string             `json:"item"`
-	Qty       int                `json:"qty"`
-	To        UserSummary        `json:"to"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DueDate 返却期限。返却の必要がない受け渡しにはない
+	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
+	From    UserSummary         `json:"from"`
+	Id      openapi_types.UUID  `json:"id"`
+	Item    string              `json:"item"`
+	Qty     int                 `json:"qty"`
+
+	// ReturnedAt 返却された日時。まだ返却されていなければない
+	ReturnedAt *time.Time  `json:"returnedAt,omitempty"`
+	To         UserSummary `json:"to"`
 }
 
 // HandoffToken defines model for HandoffToken.
@@ -38,8 +44,15 @@ type HandoffToken struct {
 
 // IssueHandoffTokenRequest defines model for IssueHandoffTokenRequest.
 type IssueHandoffTokenRequest struct {
-	Item string `json:"item"`
-	Qty  int    `json:"qty"`
+	// DueDate 返却期限（この日の終わりまで）。省略すると返却の必要がない受け渡しになる
+	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
+	Item    string              `json:"item"`
+	Qty     int                 `json:"qty"`
+}
+
+// IssueReturnTokenRequest defines model for IssueReturnTokenRequest.
+type IssueReturnTokenRequest struct {
+	HandoffId openapi_types.UUID `json:"handoffId"`
 }
 
 // Problem RFC 9457 Problem Details
@@ -52,6 +65,11 @@ type Problem struct {
 
 // ReceiveHandoffRequest defines model for ReceiveHandoffRequest.
 type ReceiveHandoffRequest struct {
+	Token string `json:"token"`
+}
+
+// ReturnHandoffRequest defines model for ReturnHandoffRequest.
+type ReturnHandoffRequest struct {
 	Token string `json:"token"`
 }
 
@@ -72,6 +90,9 @@ type UserSummary struct {
 // BadRequest RFC 9457 Problem Details
 type BadRequest = Problem
 
+// NotFound RFC 9457 Problem Details
+type NotFound = Problem
+
 // Unauthorized RFC 9457 Problem Details
 type Unauthorized = Problem
 
@@ -85,6 +106,12 @@ type IssueHandoffTokenJSONRequestBody = IssueHandoffTokenRequest
 
 // ReceiveHandoffJSONRequestBody defines body for ReceiveHandoff for application/json ContentType.
 type ReceiveHandoffJSONRequestBody = ReceiveHandoffRequest
+
+// IssueReturnTokenJSONRequestBody defines body for IssueReturnToken for application/json ContentType.
+type IssueReturnTokenJSONRequestBody = IssueReturnTokenRequest
+
+// ReturnHandoffJSONRequestBody defines body for ReturnHandoff for application/json ContentType.
+type ReturnHandoffJSONRequestBody = ReturnHandoffRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -100,6 +127,15 @@ type ServerInterface interface {
 	// ListMyHandoffs 自分が渡した・受け取った記録を新しい順に取得する
 	// (GET /me/handoffs)
 	ListMyHandoffs(w http.ResponseWriter, r *http.Request, params ListMyHandoffsParams)
+	// ListMyOutstandingHandoffs 返却期限付きでまだ返却されていない記録（貸している・借りている）を、期限が近い順に取得する
+	// (GET /me/outstanding-handoffs)
+	ListMyOutstandingHandoffs(w http.ResponseWriter, r *http.Request)
+	// IssueReturnToken 返却用のQRトークンを発行する（借りた側）
+	// (POST /return-tokens)
+	IssueReturnToken(w http.ResponseWriter, r *http.Request)
+	// ReturnHandoff 返却用のQRトークンを読み取り、返却を記録する（貸した側）
+	// (POST /returns)
+	ReturnHandoff(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -177,6 +213,48 @@ func (siw *ServerInterfaceWrapper) ListMyHandoffs(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMyHandoffs(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyOutstandingHandoffs operation middleware
+func (siw *ServerInterfaceWrapper) ListMyOutstandingHandoffs(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyOutstandingHandoffs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// IssueReturnToken operation middleware
+func (siw *ServerInterfaceWrapper) IssueReturnToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssueReturnToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReturnHandoff operation middleware
+func (siw *ServerInterfaceWrapper) ReturnHandoff(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReturnHandoff(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -309,12 +387,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me", wrapper.GetMe)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/handoff-tokens", wrapper.IssueHandoffToken)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/handoffs", wrapper.ReceiveHandoff)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/return-tokens", wrapper.IssueReturnToken)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/returns", wrapper.ReturnHandoff)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/outstanding-handoffs", wrapper.ListMyOutstandingHandoffs)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/handoffs", wrapper.ListMyHandoffs)
 
 	return m
 }
 
 type BadRequestApplicationProblemPlusJSONResponse Problem
+
+type NotFoundApplicationProblemPlusJSONResponse Problem
 
 type UnauthorizedApplicationProblemPlusJSONResponse Problem
 
@@ -529,6 +612,225 @@ func (response ListMyHandoffs401ApplicationProblemPlusJSONResponse) VisitListMyH
 	return err
 }
 
+type ListMyOutstandingHandoffsRequestObject struct {
+}
+
+type ListMyOutstandingHandoffsResponseObject interface {
+	VisitListMyOutstandingHandoffsResponse(w http.ResponseWriter) error
+}
+
+type ListMyOutstandingHandoffs200JSONResponse []Handoff
+
+func (response ListMyOutstandingHandoffs200JSONResponse) VisitListMyOutstandingHandoffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyOutstandingHandoffs401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ListMyOutstandingHandoffs401ApplicationProblemPlusJSONResponse) VisitListMyOutstandingHandoffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueReturnTokenRequestObject struct {
+	Body *IssueReturnTokenJSONRequestBody
+}
+
+type IssueReturnTokenResponseObject interface {
+	VisitIssueReturnTokenResponse(w http.ResponseWriter) error
+}
+
+type IssueReturnToken201JSONResponse HandoffToken
+
+func (response IssueReturnToken201JSONResponse) VisitIssueReturnTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueReturnToken400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response IssueReturnToken400ApplicationProblemPlusJSONResponse) VisitIssueReturnTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueReturnToken401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response IssueReturnToken401ApplicationProblemPlusJSONResponse) VisitIssueReturnTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueReturnToken404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response IssueReturnToken404ApplicationProblemPlusJSONResponse) VisitIssueReturnTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueReturnToken409ApplicationProblemPlusJSONResponse Problem
+
+func (response IssueReturnToken409ApplicationProblemPlusJSONResponse) VisitIssueReturnTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReturnHandoffRequestObject struct {
+	Body *ReturnHandoffJSONRequestBody
+}
+
+type ReturnHandoffResponseObject interface {
+	VisitReturnHandoffResponse(w http.ResponseWriter) error
+}
+
+type ReturnHandoff200JSONResponse Handoff
+
+func (response ReturnHandoff200JSONResponse) VisitReturnHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReturnHandoff400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ReturnHandoff400ApplicationProblemPlusJSONResponse) VisitReturnHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReturnHandoff401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ReturnHandoff401ApplicationProblemPlusJSONResponse) VisitReturnHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReturnHandoff403ApplicationProblemPlusJSONResponse Problem
+
+func (response ReturnHandoff403ApplicationProblemPlusJSONResponse) VisitReturnHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReturnHandoff404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ReturnHandoff404ApplicationProblemPlusJSONResponse) VisitReturnHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReturnHandoff409ApplicationProblemPlusJSONResponse Problem
+
+func (response ReturnHandoff409ApplicationProblemPlusJSONResponse) VisitReturnHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// IssueHandoffToken 受け渡し用のQRトークンを発行する（渡す側）
@@ -543,6 +845,15 @@ type StrictServerInterface interface {
 	// ListMyHandoffs 自分が渡した・受け取った記録を新しい順に取得する
 	// (GET /me/handoffs)
 	ListMyHandoffs(ctx context.Context, request ListMyHandoffsRequestObject) (ListMyHandoffsResponseObject, error)
+	// ListMyOutstandingHandoffs 返却期限付きでまだ返却されていない記録（貸している・借りている）を、期限が近い順に取得する
+	// (GET /me/outstanding-handoffs)
+	ListMyOutstandingHandoffs(ctx context.Context, request ListMyOutstandingHandoffsRequestObject) (ListMyOutstandingHandoffsResponseObject, error)
+	// IssueReturnToken 返却用のQRトークンを発行する（借りた側）
+	// (POST /return-tokens)
+	IssueReturnToken(ctx context.Context, request IssueReturnTokenRequestObject) (IssueReturnTokenResponseObject, error)
+	// ReturnHandoff 返却用のQRトークンを読み取り、返却を記録する（貸した側）
+	// (POST /returns)
+	ReturnHandoff(ctx context.Context, request ReturnHandoffRequestObject) (ReturnHandoffResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -689,6 +1000,92 @@ func (sh *strictHandler) ListMyHandoffs(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListMyHandoffsResponseObject); ok {
 		if err := validResponse.VisitListMyHandoffsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMyOutstandingHandoffs operation middleware
+func (sh *strictHandler) ListMyOutstandingHandoffs(w http.ResponseWriter, r *http.Request) {
+	var request ListMyOutstandingHandoffsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMyOutstandingHandoffs(ctx, request.(ListMyOutstandingHandoffsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMyOutstandingHandoffs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMyOutstandingHandoffsResponseObject); ok {
+		if err := validResponse.VisitListMyOutstandingHandoffsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// IssueReturnToken operation middleware
+func (sh *strictHandler) IssueReturnToken(w http.ResponseWriter, r *http.Request) {
+	var request IssueReturnTokenRequestObject
+
+	var body IssueReturnTokenJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.IssueReturnToken(ctx, request.(IssueReturnTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "IssueReturnToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(IssueReturnTokenResponseObject); ok {
+		if err := validResponse.VisitIssueReturnTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReturnHandoff operation middleware
+func (sh *strictHandler) ReturnHandoff(w http.ResponseWriter, r *http.Request) {
+	var request ReturnHandoffRequestObject
+
+	var body ReturnHandoffJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReturnHandoff(ctx, request.(ReturnHandoffRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReturnHandoff")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReturnHandoffResponseObject); ok {
+		if err := validResponse.VisitReturnHandoffResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
