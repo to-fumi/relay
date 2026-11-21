@@ -49,7 +49,7 @@ func (h *Handler) IssueHandoffToken(ctx context.Context, req api.IssueHandoffTok
 	case err != nil:
 		return nil, err
 	}
-	return api.IssueHandoffToken201JSONResponse{Token: issued.Token, ExpiresAt: issued.ExpiresAt}, nil
+	return api.IssueHandoffToken201JSONResponse{Token: issued.Token, ExpiresAt: issued.ExpiresAt, Jti: &issued.JTI}, nil
 }
 
 func (h *Handler) ReceiveHandoff(ctx context.Context, req api.ReceiveHandoffRequestObject) (api.ReceiveHandoffResponseObject, error) {
@@ -155,6 +155,7 @@ func (h *Handler) ReturnHandoff(ctx context.Context, req api.ReturnHandoffReques
 func toAPI(v application.HandoffView) api.Handoff {
 	out := api.Handoff{
 		Id:         v.ID,
+		Jti:        v.JTI,
 		From:       api.UserSummary{Id: v.From.ID, DisplayName: v.From.DisplayName},
 		To:         api.UserSummary{Id: v.To.ID, DisplayName: v.To.DisplayName},
 		Item:       v.Item,

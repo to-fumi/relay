@@ -7,7 +7,7 @@ import {
   listMyHandoffsQueryKey,
   listMyOutstandingHandoffsOptions,
 } from "../../shared/api";
-import { problemStatus } from "../../shared/lib";
+import { problemStatus, useCountdown } from "../../shared/lib";
 import { Alert, Card, DueBadge, IconButton, TokenQr } from "../../shared/ui";
 
 const errorMessages: Record<number, string> = {
@@ -37,6 +37,9 @@ export function ReturnQr({ handoff: h, onBack }: { handoff: Handoff; onBack: () 
   }, [returned, queryClient]);
 
   const status = problemStatus(issue.error);
+  // 送る側と同じく、再発行は今の返却QRの期限が切れてから（発行できていないときは、すぐやり直せる）
+  const remaining = useCountdown(issue.data?.expiresAt);
+  const canReissue = !issue.isPending && (!issue.data || remaining === 0);
 
   return (
     <Card className="flex flex-col items-center gap-6">
@@ -73,10 +76,10 @@ export function ReturnQr({ handoff: h, onBack }: { handoff: Handoff; onBack: () 
         </IconButton>
         {!returned && (
           <IconButton
-            label="再発行"
+            label={canReissue ? "再発行" : "期限が切れると再発行できます"}
             variant="primary"
             onClick={() => mutate({ body: { handoffId: h.id } })}
-            disabled={issue.isPending}
+            disabled={!canReissue}
           >
             <RotateCw className="size-5" aria-hidden />
           </IconButton>

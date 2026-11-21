@@ -18,6 +18,7 @@ export function IssuePage() {
         <IssuedQr
           token={issue.data.token}
           expiresAt={issue.data.expiresAt}
+          jti={issue.data.jti}
           item={item.trim()}
           qty={qty}
           dueDate={dueDate}

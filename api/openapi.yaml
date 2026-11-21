@@ -295,6 +295,9 @@ components:
         expiresAt:
           type: string
           format: date-time
+        jti:
+          type: string
+          description: 受け渡し用のトークンの ID。読み取られて記録されると、Handoff の jti と一致する（送る側が、読み取られたことを知るために使う）。返却用のトークンにはない
 
     ReceiveHandoffRequest:
       type: object
@@ -305,11 +308,14 @@ components:
 
     Handoff:
       type: object
-      required: [id, from, to, item, qty, createdAt]
+      required: [id, jti, from, to, item, qty, createdAt]
       properties:
         id:
           type: string
           format: uuid
+        jti:
+          type: string
+          description: 記録に使った受け渡し用のトークンの ID
         from:
           $ref: "#/components/schemas/UserSummary"
         to:
