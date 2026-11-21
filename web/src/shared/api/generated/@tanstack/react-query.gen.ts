@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { getMe, issueHandoffToken, listMyHandoffs, type Options, receiveHandoff } from '../sdk.gen';
-import type { GetMeData, GetMeError, GetMeResponse, IssueHandoffTokenData, IssueHandoffTokenError, IssueHandoffTokenResponse, ListMyHandoffsData, ListMyHandoffsError, ListMyHandoffsResponse, ReceiveHandoffData, ReceiveHandoffError, ReceiveHandoffResponse } from '../types.gen';
+import { getMe, issueHandoffToken, issueReturnToken, listMyHandoffs, listMyOutstandingHandoffs, type Options, receiveHandoff, returnHandoff } from '../sdk.gen';
+import type { GetMeData, GetMeError, GetMeResponse, IssueHandoffTokenData, IssueHandoffTokenError, IssueHandoffTokenResponse, IssueReturnTokenData, IssueReturnTokenError, IssueReturnTokenResponse, ListMyHandoffsData, ListMyHandoffsError, ListMyHandoffsResponse, ListMyOutstandingHandoffsData, ListMyOutstandingHandoffsError, ListMyOutstandingHandoffsResponse, ReceiveHandoffData, ReceiveHandoffError, ReceiveHandoffResponse, ReturnHandoffData, ReturnHandoffError, ReturnHandoffResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -76,6 +76,8 @@ export const issueHandoffTokenMutation = (options?: Partial<Options<IssueHandoff
 
 /**
  * QRトークンを読み取り、受け渡しを記録する（受け取る側）
+ *
+ * 返却用のQRトークンを渡したときは、type が `urn:relay:problem:return-token` の 400 を返す（返却は /returns で記録する）。
  */
 export const receiveHandoffMutation = (options?: Partial<Options<ReceiveHandoffData>>): UseMutationOptions<ReceiveHandoffResponse, ReceiveHandoffError, Options<ReceiveHandoffData>> => {
     const mutationOptions: UseMutationOptions<ReceiveHandoffResponse, ReceiveHandoffError, Options<ReceiveHandoffData>> = {
@@ -90,6 +92,60 @@ export const receiveHandoffMutation = (options?: Partial<Options<ReceiveHandoffD
     };
     return mutationOptions;
 };
+
+/**
+ * 返却用のQRトークンを発行する（借りた側）
+ *
+ * 返却期限付きで受け取った記録について、返却用のQRトークンを発行する。貸した側がこれを読み取ると返却済みになる。
+ */
+export const issueReturnTokenMutation = (options?: Partial<Options<IssueReturnTokenData>>): UseMutationOptions<IssueReturnTokenResponse, IssueReturnTokenError, Options<IssueReturnTokenData>> => {
+    const mutationOptions: UseMutationOptions<IssueReturnTokenResponse, IssueReturnTokenError, Options<IssueReturnTokenData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await issueReturnToken({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * 返却用のQRトークンを読み取り、返却を記録する（貸した側）
+ */
+export const returnHandoffMutation = (options?: Partial<Options<ReturnHandoffData>>): UseMutationOptions<ReturnHandoffResponse, ReturnHandoffError, Options<ReturnHandoffData>> => {
+    const mutationOptions: UseMutationOptions<ReturnHandoffResponse, ReturnHandoffError, Options<ReturnHandoffData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await returnHandoff({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listMyOutstandingHandoffsQueryKey = (options?: Options<ListMyOutstandingHandoffsData>) => createQueryKey('listMyOutstandingHandoffs', options);
+
+/**
+ * 返却期限付きでまだ返却されていない記録（貸している・借りている）を、期限が近い順に取得する
+ */
+export const listMyOutstandingHandoffsOptions = (options?: Options<ListMyOutstandingHandoffsData>) => queryOptions<ListMyOutstandingHandoffsResponse, ListMyOutstandingHandoffsError, ListMyOutstandingHandoffsResponse, ReturnType<typeof listMyOutstandingHandoffsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listMyOutstandingHandoffs({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listMyOutstandingHandoffsQueryKey(options)
+});
 
 export const listMyHandoffsQueryKey = (options?: Options<ListMyHandoffsData>) => createQueryKey('listMyHandoffs', options);
 

@@ -59,6 +59,7 @@ paths:
     post:
       operationId: receiveHandoff
       summary: QRトークンを読み取り、受け渡しを記録する（受け取る側）
+      description: 返却用のQRトークンを渡したときは、type が `urn:relay:problem:return-token` の 400 を返す（返却は /returns で記録する）。
       tags: [handoff]
       requestBody:
         required: true
@@ -89,6 +90,92 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+
+  /return-tokens:
+    post:
+      operationId: issueReturnToken
+      summary: 返却用のQRトークンを発行する（借りた側）
+      description: 返却期限付きで受け取った記録について、返却用のQRトークンを発行する。貸した側がこれを読み取ると返却済みになる。
+      tags: [handoff]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueReturnTokenRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HandoffToken"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: すでに返却済み
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /returns:
+    post:
+      operationId: returnHandoff
+      summary: 返却用のQRトークンを読み取り、返却を記録する（貸した側）
+      tags: [handoff]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReturnHandoffRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Handoff"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: 貸した本人ではない
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: すでに返却済み
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /me/outstanding-handoffs:
+    get:
+      operationId: listMyOutstandingHandoffs
+      summary: 返却期限付きでまだ返却されていない記録（貸している・借りている）を、期限が近い順に取得する
+      tags: [handoff]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Handoff"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /me/handoffs:
     get:
@@ -135,6 +222,12 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: 記録が見つからない
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
 
   schemas:
     User:
@@ -172,6 +265,25 @@ components:
         qty:
           type: integer
           minimum: 1
+        dueDate:
+          type: string
+          format: date
+          description: 返却期限（この日の終わりまで）。省略すると返却の必要がない受け渡しになる
+
+    IssueReturnTokenRequest:
+      type: object
+      required: [handoffId]
+      properties:
+        handoffId:
+          type: string
+          format: uuid
+
+    ReturnHandoffRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
 
     HandoffToken:
       type: object
@@ -209,6 +321,14 @@ components:
         createdAt:
           type: string
           format: date-time
+        dueDate:
+          type: string
+          format: date
+          description: 返却期限。返却の必要がない受け渡しにはない
+        returnedAt:
+          type: string
+          format: date-time
+          description: 返却された日時。まだ返却されていなければない
 
     Problem:
       type: object

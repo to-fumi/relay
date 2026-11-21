@@ -14,7 +14,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const uniqueViolation = "23505"
+const (
+	uniqueViolation = "23505"
+	columns         = `id, jti, from_user, to_user, item, qty, created_at, due_date, returned_at`
+)
 
 type Repository struct {
 	pool *pgxpool.Pool
@@ -26,9 +29,10 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 func (r *Repository) Save(ctx context.Context, h domain.Handoff) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO handoffs (id, jti, from_user, to_user, item, qty, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		`INSERT INTO handoffs (`+columns+`)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		h.ID(), h.JTI(), h.From(), h.To(), string(h.Item()), int(h.Qty()), h.CreatedAt(),
+		dueDateValue(h.DueDate()), h.ReturnedAt(),
 	)
 	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == uniqueViolation && pgErr.ConstraintName == "handoffs_jti_key" {
 		return domain.ErrAlreadyRecorded
@@ -36,9 +40,35 @@ func (r *Repository) Save(ctx context.Context, h domain.Handoff) error {
 	return err
 }
 
+func (r *Repository) Get(ctx context.Context, id uuid.UUID) (domain.Handoff, error) {
+	rows, err := r.pool.Query(ctx, `SELECT `+columns+` FROM handoffs WHERE id = $1`, id)
+	if err != nil {
+		return domain.Handoff{}, err
+	}
+	h, err := pgx.CollectExactlyOneRow(rows, scanHandoff)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Handoff{}, domain.ErrNotFound
+	}
+	return h, err
+}
+
+func (r *Repository) SaveReturn(ctx context.Context, h domain.Handoff) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE handoffs SET returned_at = $2 WHERE id = $1 AND returned_at IS NULL`,
+		h.ID(), h.ReturnedAt(),
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrAlreadyReturned
+	}
+	return nil
+}
+
 func (r *Repository) ListByUser(ctx context.Context, user uuid.UUID, limit int) ([]domain.Handoff, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, jti, from_user, to_user, item, qty, created_at
+		`SELECT `+columns+`
 		 FROM handoffs
 		 WHERE from_user = $1 OR to_user = $1
 		 ORDER BY created_at DESC
@@ -48,16 +78,48 @@ func (r *Repository) ListByUser(ctx context.Context, user uuid.UUID, limit int) 
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Handoff, error) {
-		var (
-			id, from, to uuid.UUID
-			jti, item    string
-			qty          int
-			at           time.Time
-		)
-		if err := row.Scan(&id, &jti, &from, &to, &item, &qty, &at); err != nil {
-			return domain.Handoff{}, err
-		}
-		return domain.Restore(id, jti, from, to, item, qty, at), nil
-	})
+	return pgx.CollectRows(rows, scanHandoff)
+}
+
+func (r *Repository) ListOutstandingByUser(ctx context.Context, user uuid.UUID) ([]domain.Handoff, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+columns+`
+		 FROM handoffs
+		 WHERE (from_user = $1 OR to_user = $1) AND due_date IS NOT NULL AND returned_at IS NULL
+		 ORDER BY due_date, created_at`,
+		user,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanHandoff)
+}
+
+func scanHandoff(row pgx.CollectableRow) (domain.Handoff, error) {
+	var (
+		id, from, to uuid.UUID
+		jti, item    string
+		qty          int
+		at           time.Time
+		due          *time.Time
+		returnedAt   *time.Time
+	)
+	if err := row.Scan(&id, &jti, &from, &to, &item, &qty, &at, &due, &returnedAt); err != nil {
+		return domain.Handoff{}, err
+	}
+	var dueDate *domain.DueDate
+	if due != nil {
+		d := domain.DueDateOf(*due)
+		dueDate = &d
+	}
+	return domain.Restore(id, jti, from, to, item, qty, at, dueDate, returnedAt), nil
+}
+
+// dueDateValue は返却期限を date 列に入れる値にする（pgx は time.Time の日付部分を使う）。
+func dueDateValue(d *domain.DueDate) *time.Time {
+	if d == nil {
+		return nil
+	}
+	t := d.Time()
+	return &t
 }

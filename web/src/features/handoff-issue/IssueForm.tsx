@@ -1,19 +1,32 @@
-import { Minus, Plus, QrCode } from "lucide-react";
-import type { FormEvent } from "react";
+import { CalendarClock, Hash, Minus, Package, Plus, QrCode } from "lucide-react";
+import type { FormEvent, ReactNode } from "react";
 import { cn } from "../../shared/lib";
-import { Alert, Button, Card, Field, inputClass } from "../../shared/ui";
+import { Alert, Card, Fab, inputClass } from "../../shared/ui";
+import { DueDateInput } from "./DueDateInput";
 
 type Props = {
   item: string;
   qty: number;
+  dueDate: string | null;
   onItemChange: (v: string) => void;
   onQtyChange: (v: number) => void;
+  onDueDateChange: (v: string | null) => void;
   onSubmit: () => void;
   pending: boolean;
   failed: boolean;
 };
 
-export function IssueForm({ item, qty, onItemChange, onQtyChange, onSubmit, pending, failed }: Props) {
+export function IssueForm({
+  item,
+  qty,
+  dueDate,
+  onItemChange,
+  onQtyChange,
+  onDueDateChange,
+  onSubmit,
+  pending,
+  failed,
+}: Props) {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     onSubmit();
@@ -21,21 +34,24 @@ export function IssueForm({ item, qty, onItemChange, onQtyChange, onSubmit, pend
   const setQty = (n: number) => onQtyChange(Math.max(1, Number.isFinite(n) ? Math.floor(n) : 1));
 
   return (
-    <Card>
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <Field
-          id="item"
-          label="品目"
-          value={item}
-          onChange={(e) => onItemChange(e.target.value)}
-          placeholder="例：LANケーブル"
-          maxLength={200}
-          required
-        />
+    <form onSubmit={handleSubmit} className="space-y-8">
+      <Card className="divide-y divide-zinc-100 py-2 dark:divide-zinc-800">
+        <Row icon={<Package />}>
+          <input
+            id="item"
+            aria-label="品目"
+            value={item}
+            onChange={(e) => onItemChange(e.target.value)}
+            placeholder="LANケーブル"
+            maxLength={200}
+            required
+            className={inputClass}
+          />
+        </Row>
 
-        <div>
-          <span className="mb-1.5 block font-medium text-sm text-zinc-700 dark:text-zinc-300">数量</span>
-          <div className="flex items-center gap-2">
+        <Row icon={<Hash />}>
+          {/* 数量は桁が少ないので、右に寄せた小さなステッパーにする */}
+          <div className="ml-auto flex w-fit items-center gap-2">
             <StepButton label="1つ減らす" onClick={() => setQty(qty - 1)} disabled={qty <= 1}>
               <Minus className="size-5" />
             </StepButton>
@@ -46,23 +62,39 @@ export function IssueForm({ item, qty, onItemChange, onQtyChange, onSubmit, pend
               min={1}
               value={qty}
               onChange={(e) => setQty(Number(e.target.value))}
-              className={cn(inputClass, "text-center font-semibold text-lg tabular-nums")}
+              className={cn(inputClass, "h-11 w-16 px-1 text-center font-semibold text-lg tabular-nums")}
               required
             />
             <StepButton label="1つ増やす" onClick={() => setQty(qty + 1)}>
               <Plus className="size-5" />
             </StepButton>
           </div>
-        </div>
+        </Row>
 
-        {failed && <Alert>QRを発行できませんでした。入力内容を確認してください。</Alert>}
+        <Row icon={<CalendarClock />} label="返却期限">
+          <DueDateInput value={dueDate} onChange={onDueDateChange} />
+        </Row>
+      </Card>
 
-        <Button type="submit" block disabled={pending || item.trim() === ""}>
-          <QrCode className="size-5" aria-hidden />
-          QRを発行
-        </Button>
-      </form>
-    </Card>
+      {failed && <Alert>発行できませんでした</Alert>}
+
+      <Fab type="submit" label="QRを発行" disabled={pending || item.trim() === ""}>
+        <QrCode aria-hidden />
+      </Fab>
+    </form>
+  );
+}
+
+/** 左にアイコン、右に入力を置く 1 行 */
+function Row({ icon, label, children }: { icon: ReactNode; label?: string; children: ReactNode }) {
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: 見た目の行。入力にはそれぞれ aria-label を付けている
+    <div className="flex min-h-18 items-center gap-4 py-3" role="group" aria-label={label}>
+      <span className="shrink-0 text-zinc-400 dark:text-zinc-500 [&>svg]:size-5" aria-hidden>
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
   );
 }
 
@@ -72,7 +104,7 @@ function StepButton({
   ...props
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
   onClick: () => void;
   disabled?: boolean;
 }) {
@@ -80,7 +112,7 @@ function StepButton({
     <button
       type="button"
       aria-label={label}
-      className="grid size-12 shrink-0 place-items-center rounded-xl bg-zinc-100 text-zinc-700 hover:bg-zinc-200 disabled:opacity-40 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+      className="grid size-11 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-200 disabled:opacity-40 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
       {...props}
     >
       {children}

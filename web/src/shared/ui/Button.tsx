@@ -11,14 +11,25 @@ const variants: Record<Variant, string> = {
   ghost: "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800",
 };
 
-type Props = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; block?: boolean };
+const sizes = {
+  md: "h-12 rounded-xl px-5 text-base",
+  /** 画面の主な操作（発行など） */
+  lg: "h-14 rounded-2xl px-6 text-lg",
+} as const;
 
-export function Button({ variant = "primary", block, className, type = "button", ...props }: Props) {
+type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: Variant;
+  size?: keyof typeof sizes;
+  block?: boolean;
+};
+
+export function Button({ variant = "primary", size = "md", block, className, type = "button", ...props }: Props) {
   return (
     <button
       type={type}
       className={cn(
-        "inline-flex h-12 items-center justify-center gap-2 rounded-xl px-5 font-semibold text-base transition-colors focus-visible:outline-2 focus-visible:outline-indigo-600 focus-visible:outline-offset-2 disabled:cursor-not-allowed",
+        "inline-flex items-center justify-center gap-2 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-indigo-600 focus-visible:outline-offset-2 disabled:cursor-not-allowed",
+        sizes[size],
         variants[variant],
         block && "w-full",
         className,

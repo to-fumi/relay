@@ -69,6 +69,8 @@ func run(ctx context.Context) error {
 		identitySvc,
 		cfg.HandoffTokenTTL,
 		time.Now,
+		// 返却期限の「今日」は日本時間で決める（コンテナに tzdata がなくても使えるように固定のオフセットにする）
+		time.FixedZone("Asia/Tokyo", 9*60*60),
 	)
 
 	srv := server{

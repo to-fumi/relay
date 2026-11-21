@@ -1,4 +1,9 @@
-import { type AuthenticationResult, EventType, PublicClientApplication } from "@azure/msal-browser";
+import {
+  type AuthenticationResult,
+  EventType,
+  InteractionRequiredAuthError,
+  PublicClientApplication,
+} from "@azure/msal-browser";
 import { entraConfig } from "./config";
 
 export const msalInstance = new PublicClientApplication({
@@ -7,6 +12,7 @@ export const msalInstance = new PublicClientApplication({
     authority: `https://login.microsoftonline.com/${entraConfig.tenantId}`,
     redirectUri: window.location.origin,
   },
+  // タブを閉じれば消える sessionStorage に置く
   cache: { cacheLocation: "sessionStorage" },
 });
 
@@ -30,9 +36,27 @@ export async function initMsal(): Promise<void> {
   }
 }
 
+/**
+ * API 用のアクセストークンを返す。期限が近いものは MSAL がリフレッシュトークンで自動で更新する。
+ * 更新できない（リフレッシュトークンも期限切れなど）ときは、保存済みのトークンを消してログインし直す。
+ */
 export async function getEntraAccessToken(): Promise<string | undefined> {
   const account = msalInstance.getActiveAccount();
   if (!account) return undefined;
-  const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
-  return result.accessToken;
+  try {
+    const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
+    return result.accessToken;
+  } catch (e) {
+    if (e instanceof InteractionRequiredAuthError) {
+      await reloginEntra();
+      return undefined;
+    }
+    throw e;
+  }
+}
+
+/** 保存済みのトークンとアカウントを消し、Entra ID のログイン画面へ移る。 */
+export async function reloginEntra(): Promise<void> {
+  await msalInstance.clearCache();
+  await msalInstance.loginRedirect(loginRequest);
 }
