@@ -7,10 +7,11 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "gen": "openapi-ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
     "lint": "biome check .",
     "fmt": "biome check --write .",
-    "depcheck": "depcruise src --config .dependency-cruiser.cjs"
+    "depcheck": "depcruise src --config .dependency-cruiser.cjs",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@azure/msal-browser": "5.30.0",
@@ -28,7 +29,9 @@
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
     "@hey-api/openapi-ts": "0.99.0",
+    "@playwright/test": "1.65.1",
     "@tailwindcss/vite": "4.3.5",
+    "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.3.0",

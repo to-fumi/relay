@@ -141,6 +141,7 @@ pnpm task dev:web            # Vite を起動する（/api は localhost:8080 �
 pnpm task gen                # openapi.yaml を変更したら実行する（Go と TS のコードを生成する）
 pnpm task fmt                # 整形する
 pnpm task check              # CI と同じチェックをすべて実行する
+pnpm task e2e                # E2E テストとスクショ（db:up が必要。初回は pnpm task e2e:install でブラウザを入れる）
 ```
 
 - `task` は npm の `@go-task/cli` で入る（`pnpm task ...` で呼ぶ）。Go の開発ツールは `backend-go/tools/go.mod` で管理し、`go tool -modfile=tools/go.mod <tool>` で呼ぶ
@@ -162,6 +163,7 @@ pnpm task check              # CI と同じチェックをすべて実行する
 - **生成コードの確認**：CIでコードを生成し直し、`git diff --exit-code` で差分がないことを確認する（Go側とTS側の両方）
 - **Git フック**：lefthook（pre-commit でフォーマットと Lint を実行する）
 - **CI**：GitHub Actions。paths フィルターで、変更されたディレクトリのジョブだけを実行する
+- **E2E**：Playwright（`web/e2e`）。ビルドした SPA を API サーバーから配信し、`AUTH_MODE=dev` で 2 人分の操作を行う。相手の QR の読み取りは API で代わりにする。スクショは CI で `ci-screenshots` ブランチに置き、PR にコメントで載せる
 - **依存の更新**：Renovate
 - **改行コード**：LF に統一する（`.gitattributes` に `* text=auto eol=lf`、`biome.json` に `formatter.lineEnding: "lf"`）
 
