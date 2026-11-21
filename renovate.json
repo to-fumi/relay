@@ -21,6 +21,11 @@
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["patch", "minor"],
       "groupName": "dev dependencies (non-major)"
+    },
+    {
+      "description": "QR 読み取りのライブラリと、一緒に配信する wasm（zxing-wasm）はそろえて同時に更新する。zxing-wasm は pnpm-workspace.yaml の overrides も合わせて上げる",
+      "matchPackageNames": ["@yudiel/react-qr-scanner", "barcode-detector", "zxing-wasm"],
+      "groupName": "qr scanner"
     }
   ]
 }

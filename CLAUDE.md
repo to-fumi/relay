@@ -125,6 +125,7 @@ web/src/
 - **Backend**：Go 1.27（`go.mod` の `toolchain` で patch バージョンまで固定する。標準ライブラリの net/http、oapi-codegen の strict-server、pgx、goose、golang-jwt）、PostgreSQL 18
 - **Node**：24（`.node-version`）、pnpm（`packageManager` で固定する）
 - **配置**：SPAはAPIサーバーから一緒に配信し、1つのコンテナにまとめる
+- **外部への通信**：社内のプロキシで止まらないように、実行時に外部の CDN などへ取りに行くものは置かない（Entra ID のログインだけは例外）。QR を解読する wasm（`zxing-wasm`）もアプリと一緒に配信する（`shared/ui/QrScanner` の `prepareZXingModule`）。wasm と、ライブラリが使う JS のバージョンは `pnpm-workspace.yaml` の `overrides` で 1 つにそろえる
 - **テスト**：APIテストはバックエンドの実装に依存しない形で書く（トークンは1回しか使えない、期限切れは失敗する、自分には渡せない、など）
 
 ## コマンド

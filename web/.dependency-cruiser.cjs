@@ -38,9 +38,10 @@ module.exports = {
     },
     {
       name: "not-to-unresolvable",
+      comment: "Vite の ?url などの付いた import は、ファイルの URL を受け取るためのものなので除く",
       severity: "error",
       from: {},
-      to: { couldNotResolve: true },
+      to: { couldNotResolve: true, pathNot: "\\?(url|raw|inline)$" },
     },
     {
       name: "no-non-package-json",

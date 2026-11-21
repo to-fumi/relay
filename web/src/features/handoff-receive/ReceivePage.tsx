@@ -114,10 +114,10 @@ function Done({ handoff: h, kind, onNext }: { handoff: Handoff; kind: "received"
             </IconRow>
           )}
         </IconRows>
-        <Fab label="続けて読み取る" onClick={onNext}>
-          <ScanLine aria-hidden />
-        </Fab>
       </Card>
+      <Fab label="続けて読み取る" onClick={onNext}>
+        <ScanLine aria-hidden />
+      </Fab>
     </section>
   );
 }

@@ -8,3 +8,8 @@ minimumReleaseAgeExclude:
   - '@tanstack/react-query@5.108.2'
   - lucide-react@1.77.0
   - tailwind-merge@3.7.1
+
+# QR 読み取りの wasm はアプリと一緒に配信する（web/src/shared/ui/QrScanner.tsx）。
+# 配信する wasm と、barcode-detector が使う JS のバージョンを必ずそろえるため、ここで 1 つに固定する
+overrides:
+  zxing-wasm: 3.1.7

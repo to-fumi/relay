@@ -1,6 +1,16 @@
-import { type IScannerError, Scanner } from "@yudiel/react-qr-scanner";
+import { type IScannerError, prepareZXingModule, Scanner } from "@yudiel/react-qr-scanner";
 import { useState } from "react";
+// QR を解読する wasm を、外部の CDN からではなくアプリと一緒に配信する（社内のプロキシで止まらないように）
+import zxingReaderWasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
 import { Alert } from "./Alert";
+
+// ブラウザに QR を読む機能がないとき（iOS Safari など）に使う wasm の場所を、読み取りの前に差し替える。
+// バージョンは pnpm-workspace.yaml の overrides で、ライブラリが使う zxing-wasm とそろえている
+prepareZXingModule({
+  overrides: {
+    locateFile: (path: string, prefix: string) => (path.endsWith(".wasm") ? zxingReaderWasmUrl : prefix + path),
+  },
+});
 
 // ライブラリの既定値は高さの最小が 640px で、640x480 のカメラが起動しないため、希望値だけを指定する
 const cameraConstraints: MediaTrackConstraints = {
