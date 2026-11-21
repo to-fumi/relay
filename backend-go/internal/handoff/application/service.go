@@ -28,11 +28,14 @@ func NewService(repo domain.Repository, signer TokenSigner, users UserDirectory,
 type IssuedToken struct {
 	Token     string
 	ExpiresAt time.Time
+	// JTI は受け渡し用のトークンの ID（返却用のトークンでは空）。記録された HandoffView の JTI と一致する
+	JTI string
 }
 
 // HandoffView は表示用の受け渡し記録。
 type HandoffView struct {
 	ID         uuid.UUID
+	JTI        string
 	From       UserRef
 	To         UserRef
 	Item       string
@@ -65,8 +68,9 @@ func (s *Service) IssueToken(_ context.Context, from uuid.UUID, item string, qty
 		}
 	}
 	exp := now.Add(s.ttl).Truncate(time.Second)
+	jti := newJTI()
 	token, err := s.signer.Sign(TokenClaims{
-		JTI:       newJTI(),
+		JTI:       jti,
 		From:      from,
 		Item:      string(it),
 		Qty:       int(q),
@@ -76,7 +80,7 @@ func (s *Service) IssueToken(_ context.Context, from uuid.UUID, item string, qty
 	if err != nil {
 		return IssuedToken{}, err
 	}
-	return IssuedToken{Token: token, ExpiresAt: exp}, nil
+	return IssuedToken{Token: token, ExpiresAt: exp, JTI: jti}, nil
 }
 
 // Receive は受け取る側（to）がトークンを読み取ったときに、受け渡しを記録する。
@@ -185,6 +189,7 @@ func (s *Service) toViews(ctx context.Context, hs []domain.Handoff) ([]HandoffVi
 	for i, h := range hs {
 		v := HandoffView{
 			ID:         h.ID(),
+			JTI:        h.JTI(),
 			From:       UserRef{ID: h.From(), DisplayName: names[h.From()]},
 			To:         UserRef{ID: h.To(), DisplayName: names[h.To()]},
 			Item:       string(h.Item()),

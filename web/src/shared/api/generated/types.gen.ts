@@ -39,6 +39,10 @@ export type HandoffToken = {
      */
     token: string;
     expiresAt: string;
+    /**
+     * 受け渡し用のトークンの ID。読み取られて記録されると、Handoff の jti と一致する（送る側が、読み取られたことを知るために使う）。返却用のトークンにはない
+     */
+    jti?: string;
 };
 
 export type ReceiveHandoffRequest = {
@@ -47,6 +51,10 @@ export type ReceiveHandoffRequest = {
 
 export type Handoff = {
     id: string;
+    /**
+     * 記録に使った受け渡し用のトークンの ID
+     */
+    jti: string;
     from: UserSummary;
     to: UserSummary;
     item: string;

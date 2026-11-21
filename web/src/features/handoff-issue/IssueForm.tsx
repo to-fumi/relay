@@ -1,5 +1,5 @@
 import { CalendarClock, Hash, Minus, Package, Plus, QrCode } from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useRef } from "react";
 import { cn } from "../../shared/lib";
 import { Alert, Card, Fab, inputClass } from "../../shared/ui";
 import { DueDateInput } from "./DueDateInput";
@@ -27,6 +27,15 @@ export function IssueForm({
   pending,
   failed,
 }: Props) {
+  const qtyRef = useRef<HTMLInputElement>(null);
+  // Enter では発行しない（数量や期限も入れてから、右下のボタンで発行する）。
+  // 日本語入力の変換を確定する Enter はそのまま通す
+  const onEnter = (next: () => void) => (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    next();
+  };
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     onSubmit();
@@ -40,6 +49,8 @@ export function IssueForm({
           <input
             id="item"
             aria-label="品目"
+            enterKeyHint="next"
+            onKeyDown={onEnter(() => qtyRef.current?.select())}
             value={item}
             onChange={(e) => onItemChange(e.target.value)}
             placeholder="LANケーブル"
@@ -56,7 +67,10 @@ export function IssueForm({
               <Minus className="size-5" />
             </StepButton>
             <input
+              ref={qtyRef}
               aria-label="数量"
+              enterKeyHint="done"
+              onKeyDown={onEnter(() => qtyRef.current?.blur())}
               type="number"
               inputMode="numeric"
               min={1}
@@ -71,7 +85,7 @@ export function IssueForm({
           </div>
         </Row>
 
-        <Row icon={<CalendarClock />} label="返却期限">
+        <Row icon={<CalendarClock />} label="返却期限" alignTop>
           <DueDateInput value={dueDate} onChange={onDueDateChange} />
         </Row>
       </Card>
@@ -86,11 +100,29 @@ export function IssueForm({
 }
 
 /** 左にアイコン、右に入力を置く 1 行 */
-function Row({ icon, label, children }: { icon: ReactNode; label?: string; children: ReactNode }) {
+function Row({
+  icon,
+  label,
+  alignTop,
+  children,
+}: {
+  icon: ReactNode;
+  label?: string;
+  /** 2 段の入力のとき、アイコンを上の段にそろえる */
+  alignTop?: boolean;
+  children: ReactNode;
+}) {
   return (
     // biome-ignore lint/a11y/useSemanticElements: 見た目の行。入力にはそれぞれ aria-label を付けている
-    <div className="flex min-h-18 items-center gap-4 py-3" role="group" aria-label={label}>
-      <span className="shrink-0 text-zinc-400 dark:text-zinc-500 [&>svg]:size-5" aria-hidden>
+    <div
+      className={cn("flex min-h-18 gap-4 py-3", alignTop ? "items-start" : "items-center")}
+      role="group"
+      aria-label={label}
+    >
+      <span
+        className={cn("shrink-0 text-zinc-400 dark:text-zinc-500 [&>svg]:size-5", alignTop && "pt-2.5")}
+        aria-hidden
+      >
         {icon}
       </span>
       <div className="min-w-0 flex-1">{children}</div>

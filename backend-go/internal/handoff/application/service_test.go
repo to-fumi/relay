@@ -166,6 +166,10 @@ func TestReceive_RecordsHandoffFromIssuer(t *testing.T) {
 	if got.DueDate != nil || got.ReturnedAt != nil {
 		t.Fatalf("handoff without due date has DueDate=%v ReturnedAt=%v", got.DueDate, got.ReturnedAt)
 	}
+	// 送る側は、発行したときの JTI で読み取られたことを知る
+	if issued.JTI == "" || got.JTI != issued.JTI {
+		t.Fatalf("JTI = %q; want %q (issued)", got.JTI, issued.JTI)
+	}
 }
 
 func TestReceive_RecordsDueDate(t *testing.T) {

@@ -27,7 +27,10 @@ type Handoff struct {
 	From    UserSummary         `json:"from"`
 	Id      openapi_types.UUID  `json:"id"`
 	Item    string              `json:"item"`
-	Qty     int                 `json:"qty"`
+
+	// Jti 記録に使った受け渡し用のトークンの ID
+	Jti string `json:"jti"`
+	Qty int    `json:"qty"`
 
 	// ReturnedAt 返却された日時。まだ返却されていなければない
 	ReturnedAt *time.Time  `json:"returnedAt,omitempty"`
@@ -37,6 +40,9 @@ type Handoff struct {
 // HandoffToken defines model for HandoffToken.
 type HandoffToken struct {
 	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Jti 受け渡し用のトークンの ID。読み取られて記録されると、Handoff の jti と一致する（送る側が、読み取られたことを知るために使う）。返却用のトークンにはない
+	Jti *string `json:"jti,omitempty"`
 
 	// Token QRに埋め込む署名付きトークン
 	Token string `json:"token"`
