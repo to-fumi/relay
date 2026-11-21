@@ -32,31 +32,33 @@ export function ReturnScan({ onBack }: { onBack: () => void }) {
   if (ret.data) {
     const h = ret.data;
     return (
-      <Card className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-            <CornerDownLeft className="size-8" aria-hidden />
-            <span className="font-bold text-lg">返却</span>
+      <>
+        <Card className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <CornerDownLeft className="size-8" aria-hidden />
+              <span className="font-bold text-lg">返却</span>
+            </div>
+            {h.returnedAt && (
+              <span className="text-sm text-zinc-500 tabular-nums dark:text-zinc-400">{formatTime(h.returnedAt)}</span>
+            )}
           </div>
-          {h.returnedAt && (
-            <span className="text-sm text-zinc-500 tabular-nums dark:text-zinc-400">{formatTime(h.returnedAt)}</span>
-          )}
-        </div>
-        <IconRows>
-          <IconRow icon={User} label="返した人">
-            {h.to.displayName}
-          </IconRow>
-          <IconRow icon={Package} label="品目と数量">
-            {h.item} <span className="tabular-nums">×{h.qty}</span>
-          </IconRow>
-        </IconRows>
-        <IconButton label="一覧へ" onClick={onBack}>
-          <ArrowLeft className="size-5" aria-hidden />
-        </IconButton>
+          <IconRows>
+            <IconRow icon={User} label="返した人">
+              {h.to.displayName}
+            </IconRow>
+            <IconRow icon={Package} label="品目と数量">
+              {h.item} <span className="tabular-nums">×{h.qty}</span>
+            </IconRow>
+          </IconRows>
+          <IconButton label="一覧へ" onClick={onBack}>
+            <ArrowLeft className="size-5" aria-hidden />
+          </IconButton>
+        </Card>
         <Fab label="続けて読み取る" onClick={() => ret.reset()}>
           <ScanLine aria-hidden />
         </Fab>
-      </Card>
+      </>
     );
   }
 
