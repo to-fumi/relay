@@ -2,6 +2,13 @@
 # Dev Container を作ったあとに 1 回だけ実行する
 set -euo pipefail
 
+# db とネットワークを共有しているので、作り直す前のコンテナのファイアウォール（古い許可リスト）が残っていることがある。
+# セットアップの間は外し、終わったら postStartCommand で最新の許可リストでかけ直す
+sudo iptables -P INPUT ACCEPT
+sudo iptables -P OUTPUT ACCEPT
+sudo iptables -P FORWARD ACCEPT
+sudo iptables -F
+
 # volume は root の持ち物で作られるので、vscode ユーザーのものにする
 sudo chown -R vscode:vscode /home/vscode/.claude
 
