@@ -23,7 +23,7 @@ pnpm task e2e:install
 
 # ここから先、vscode ユーザーの sudo はファイアウォールの再設定だけにする
 # （AI がファイアウォールを外したり、パッケージを入れたりできないように。要るときはコンテナを作り直す）
-echo 'vscode ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh' | sudo tee /etc/sudoers.d/relay-firewall >/dev/null
+echo 'vscode ALL=(root) NOPASSWD: /usr/local/bin/relay-firewall.sh' | sudo tee /etc/sudoers.d/relay-firewall >/dev/null
 sudo chmod 0440 /etc/sudoers.d/relay-firewall
 sudo rm -f /etc/sudoers.d/vscode
 if sudo -n true 2>/dev/null; then

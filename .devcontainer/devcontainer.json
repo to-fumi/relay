@@ -18,7 +18,7 @@
   },
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   // 起動のたびに、外への通信を GitHub と allowed-domains.txt のドメインだけにする
-  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+  "postStartCommand": "sudo /usr/local/bin/relay-firewall.sh",
   "waitFor": "postStartCommand",
   // Mac の SSH の鍵をコンテナに渡さない（git は HTTPS と gh の認証で使う）
   "remoteEnv": { "SSH_AUTH_SOCK": "" },

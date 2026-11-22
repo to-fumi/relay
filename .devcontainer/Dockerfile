@@ -9,5 +9,5 @@ RUN apt-get update \
 # 許可するドメインはイメージに焼き込む。コンテナの中から書き換えて広げられないようにするため
 # （変えるときは allowed-domains.txt を PR で直し、コンテナを作り直す）
 COPY allowed-domains.txt /etc/relay/allowed-domains.txt
-COPY init-firewall.sh /usr/local/bin/init-firewall.sh
-RUN chmod 644 /etc/relay/allowed-domains.txt && chmod 755 /usr/local/bin/init-firewall.sh
+COPY relay-firewall.sh /usr/local/bin/relay-firewall.sh
+RUN chmod 644 /etc/relay/allowed-domains.txt && chmod 755 /usr/local/bin/relay-firewall.sh

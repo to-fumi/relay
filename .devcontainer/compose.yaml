@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     command: sleep infinity
     network_mode: service:db
-    # 外への通信を絞るファイアウォール（init-firewall.sh）に要る
+    # 外への通信を絞るファイアウォール（relay-firewall.sh）に要る
     cap_add:
       - NET_ADMIN
       - NET_RAW

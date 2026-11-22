@@ -2,27 +2,19 @@
 # Dev Container から外への通信を、GitHub と /etc/relay/allowed-domains.txt のドメインだけにする。
 # コンテナを起動するたびに root で実行する（postStartCommand）。
 # Anthropic の参考実装（anthropics/claude-code の .devcontainer/init-firewall.sh）をもとにしている。
+# Claude Code の devcontainer feature が /usr/local/bin/init-firewall.sh に自分のものを置くので、名前を分けている。
 set -euo pipefail
 IFS=$'\n\t'
 
 DOMAINS_FILE=/etc/relay/allowed-domains.txt
 
-# Docker の内部 DNS（127.0.0.11）の設定は、消す前に取っておく
-DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
-
+# 通信を絞る filter の表だけを作り直す。nat の表には Docker の内部 DNS（127.0.0.11）の設定があるので触らない
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+iptables -P FORWARD ACCEPT
 iptables -F
 iptables -X
-iptables -t nat -F
-iptables -t nat -X
-iptables -t mangle -F
-iptables -t mangle -X
 ipset destroy allowed-domains 2>/dev/null || true
-
-if [ -n "$DOCKER_DNS_RULES" ]; then
-  iptables -t nat -N DOCKER_OUTPUT 2>/dev/null || true
-  iptables -t nat -N DOCKER_POSTROUTING 2>/dev/null || true
-  echo "$DOCKER_DNS_RULES" | xargs -L 1 iptables -t nat
-fi
 
 # DNS と localhost（db への接続を含む）は先に許可する
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT

@@ -174,6 +174,6 @@ pnpm task e2e                # E2E テストとスクショ（db:up が必要。
 - AI に許す操作と、確認を求める操作は `.claude/settings.json` に書く
 - Issue と PR の形は `.github/ISSUE_TEMPLATE/` と `.github/pull_request_template.md`
 - AI は Dev Container の中で動かす。コンテナの中では次のように守る
-  - 外への通信は GitHub と `.devcontainer/allowed-domains.txt` のドメインだけ（起動のたびに `init-firewall.sh` で設定する）。足すときは PR で直し、コンテナを作り直す。途中で npm などに届かなくなったら、人が `sudo /usr/local/bin/init-firewall.sh` で設定し直す
+  - 外への通信は GitHub と `.devcontainer/allowed-domains.txt` のドメインだけ（起動のたびに `relay-firewall.sh` で設定する）。足すときは PR で直し、コンテナを作り直す。途中で npm などに届かなくなったら、人が `sudo /usr/local/bin/relay-firewall.sh` で設定し直す
   - `sudo` はファイアウォールの再設定にしか使えない。パッケージを足すときは Dockerfile か post-create.sh を直してコンテナを作り直す
   - Mac の SSH の鍵はコンテナに渡さない。Claude Code の権限は確認を飛ばすモード（bypassPermissions）を使えなくしてある
