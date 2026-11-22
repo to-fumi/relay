@@ -1,0 +1,30 @@
+{
+  "name": "Relay",
+  "dockerComposeFile": "compose.yaml",
+  "service": "dev",
+  "runServices": ["dev", "db"],
+  "workspaceFolder": "/workspaces/relay",
+  "remoteUser": "vscode",
+  "features": {
+    // Go は go.mod の toolchain で決めた patch バージョンが自動で入る
+    "ghcr.io/devcontainers/features/go:1": { "version": "latest" },
+    "ghcr.io/devcontainers/features/node:1": { "version": "24" },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+  },
+  "containerEnv": {
+    // Taskfile の db:up は、この中では何もしない（db はもう動いている）
+    "RELAY_DEVCONTAINER": "1"
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "forwardPorts": [5173, 8080],
+  "portsAttributes": {
+    "5173": { "label": "web (Vite)" },
+    "8080": { "label": "api" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go", "biomejs.biome", "ms-playwright.playwright", "bradlc.vscode-tailwindcss"]
+    }
+  }
+}

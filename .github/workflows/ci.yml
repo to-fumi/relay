@@ -22,6 +22,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       web: ${{ steps.filter.outputs.web }}
       go: ${{ steps.filter.outputs.go }}
+      devcontainer: ${{ steps.filter.outputs.devcontainer }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -47,6 +48,8 @@ jobs:
             go:
               - *shared
               - backend-go/**
+            devcontainer:
+              - .devcontainer/**
 
   # openapi.yaml の検証と、生成コードが仕様と一致しているかの確認
   api:
@@ -216,10 +219,22 @@ jobs:
             gh api -X POST "repos/${REPO}/issues/${PR}/comments" -F body=@comment.md > /dev/null
           fi
 
+  # Dev Container を作り、その中で CI と同じチェックと E2E を通す（人・AI・CI が同じ環境で通ることを確かめる）
+  devcontainer:
+    needs: changes
+    if: needs.changes.outputs.devcontainer == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: pnpm task check && pnpm task e2e
+
   # ブランチ保護の必須チェックにはこのジョブだけを指定する（スキップされたジョブは成功扱い）
   ci-ok:
     if: always()
-    needs: [api, web, go, e2e]
+    needs: [api, web, go, e2e, devcontainer]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')

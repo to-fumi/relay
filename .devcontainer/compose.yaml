@@ -1,0 +1,32 @@
+# Dev Container 用。開発用のコンテナ（dev）は db とネットワークを共有するので、
+# コンテナの中からも localhost:5432 で PostgreSQL に届く（backend-go/.env.example のままで動く）
+services:
+  dev:
+    image: mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+    command: sleep infinity
+    network_mode: service:db
+    volumes:
+      - ..:/workspaces/relay:cached
+      # Claude Code のログイン情報を、作り直しても消えないようにする
+      - claude-config:/home/vscode/.claude
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: relay
+      POSTGRES_DB: relay
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relay"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  db-data:
+  claude-config:
