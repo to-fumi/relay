@@ -21,4 +21,14 @@ pnpm task e2e:install
 [ -f backend-go/.env ] || cp backend-go/.env.example backend-go/.env
 [ -f web/.env ] || cp web/.env.example web/.env
 
+# ここから先、vscode ユーザーの sudo はファイアウォールの再設定だけにする
+# （AI がファイアウォールを外したり、パッケージを入れたりできないように。要るときはコンテナを作り直す）
+echo 'vscode ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh' | sudo tee /etc/sudoers.d/relay-firewall >/dev/null
+sudo chmod 0440 /etc/sudoers.d/relay-firewall
+sudo rm -f /etc/sudoers.d/vscode
+if sudo -n true 2>/dev/null; then
+  echo "ERROR: sudo をまだ何にでも使える" >&2
+  exit 1
+fi
+
 echo "Dev Container の準備ができた。pnpm task dev:api と pnpm task dev:web で起動する"

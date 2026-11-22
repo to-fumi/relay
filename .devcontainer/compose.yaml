@@ -2,9 +2,15 @@
 # コンテナの中からも localhost:5432 で PostgreSQL に届く（backend-go/.env.example のままで動く）
 services:
   dev:
-    image: mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: sleep infinity
     network_mode: service:db
+    # 外への通信を絞るファイアウォール（init-firewall.sh）に要る
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     volumes:
       - ..:/workspaces/relay:cached
       # Claude Code のログイン情報を、作り直しても消えないようにする
