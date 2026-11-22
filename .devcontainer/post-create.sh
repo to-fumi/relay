@@ -17,6 +17,9 @@ pnpm install --frozen-lockfile
 # E2E で使う Chromium と、動かすのに要るパッケージ
 pnpm task e2e:install
 
+# origin が SSH（git@github.com:）でも、コンテナの中では HTTPS と gh のトークンで通信する（SSH の鍵は渡していないため）
+git config --global url."https://github.com/".insteadOf "git@github.com:"
+
 # 開発用の設定（なければ作る。仮ログインで動く）
 [ -f backend-go/.env ] || cp backend-go/.env.example backend-go/.env
 [ -f web/.env ] || cp web/.env.example web/.env
