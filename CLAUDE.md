@@ -144,6 +144,7 @@ pnpm task check              # CI と同じチェックをすべて実行する
 pnpm task e2e                # E2E テストとスクショ（db:up が必要。初回は pnpm task e2e:install でブラウザを入れる）
 ```
 
+- Dev Container（`.devcontainer/`）で開くと、Go・Node・pnpm・PostgreSQL 18・Playwright の Chromium・GitHub CLI・Claude Code がそろう。DB は一緒に起動するので `db:up` はいらない（実行しても何もしない）。CI でも同じコンテナで `task check` と `task e2e` を通す
 - `task` は npm の `@go-task/cli` で入る（`pnpm task ...` で呼ぶ）。Go の開発ツールは `backend-go/tools/go.mod` で管理し、`go tool -modfile=tools/go.mod <tool>` で呼ぶ
 - 開発中は `AUTH_MODE=dev`（バックエンド）と `VITE_AUTH_MODE=dev`（フロントエンド）で仮ログインを使う。トークンは `dev:<email>`
 - API を追加するときの順番：`api/openapi.yaml` を変更する → `pnpm task gen` → `cmd/relay/server.go` の `server` がまだ満たしていないメソッドがコンパイルエラーになるので、担当するモジュールの `adapter/http` に実装する

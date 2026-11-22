@@ -46,9 +46,14 @@ tasks:
 
   # ---------- 開発 ----------
   db:up:
-    desc: ローカルの PostgreSQL を起動する（ポートは RELAY_DB_PORT で変更できる）
+    desc: ローカルの PostgreSQL を起動する（ポートは RELAY_DB_PORT で変更できる。Dev Container の中では何もしない）
     cmds:
-      - docker compose up -d --wait db
+      - |
+        if [ -n "${RELAY_DEVCONTAINER:-}" ]; then
+          echo "Dev Container では PostgreSQL はもう動いている"
+        else
+          docker compose up -d --wait db
+        fi
 
   db:down:
     desc: ローカルの PostgreSQL を停止する
