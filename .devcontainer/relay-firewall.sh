@@ -26,31 +26,53 @@ iptables -A OUTPUT -o lo -j ACCEPT
 
 ipset create allowed-domains hash:net
 
-# GitHub（git、API、Web）の IP の範囲
-gh_ranges=$(curl -s --connect-timeout 10 https://api.github.com/meta)
-if ! echo "$gh_ranges" | jq -e '.web and .api and .git' >/dev/null; then
-  echo "ERROR: GitHub の IP の範囲を取れなかった" >&2
-  exit 1
-fi
-while read -r cidr; do
-  if [[ ! "$cidr" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
-    echo "ERROR: GitHub の IP の範囲の形がおかしい: $cidr" >&2
-    exit 1
-  fi
-  ipset add -exist allowed-domains "$cidr"
-done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | grep -v ':' | aggregate -q)
-
-# 許可するドメイン。引けなかったものは飛ばして、警告だけ出す
-while read -r domain; do
-  [[ -z "$domain" || "$domain" == \#* ]] && continue
+# ドメインの IP を引いて許可する。引けなかったものは飛ばして、警告だけ出す
+allow_domain() {
+  local domain=$1 ips ip
   ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}')
   if [ -z "$ips" ]; then
     echo "WARN: $domain の IP を引けなかったので飛ばす" >&2
-    continue
+    return 0
   fi
   while read -r ip; do
-    [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] && ipset add -exist allowed-domains "$ip"
+    if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+      ipset add -exist allowed-domains "$ip"
+    fi
   done < <(echo "$ips")
+  return 0
+}
+
+# GitHub（git、API、Web）の IP の範囲。API は認証なしだと回数制限があるので、3 回までやり直し、
+# それでも取れなければ主なドメインの IP で代わりにする
+gh_ranges=""
+for attempt in 1 2 3; do
+  gh_ranges=$(curl -s --connect-timeout 10 https://api.github.com/meta || true)
+  if echo "$gh_ranges" | jq -e '.web and .api and .git' >/dev/null 2>&1; then
+    break
+  fi
+  gh_ranges=""
+  sleep $((attempt * 2))
+done
+if [ -n "$gh_ranges" ]; then
+  while read -r cidr; do
+    if [[ ! "$cidr" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
+      echo "ERROR: GitHub の IP の範囲の形がおかしい: $cidr" >&2
+      exit 1
+    fi
+    ipset add -exist allowed-domains "$cidr"
+  done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | grep -v ':' | aggregate -q)
+else
+  echo "WARN: GitHub の IP の範囲を取れなかった（API の回数制限など）。主なドメインの IP で代わりにする" >&2
+  for domain in github.com api.github.com codeload.github.com uploads.github.com \
+    objects.githubusercontent.com raw.githubusercontent.com release-assets.githubusercontent.com; do
+    allow_domain "$domain"
+  done
+fi
+
+# 許可するドメイン（allowed-domains.txt）
+while read -r domain; do
+  [[ -z "$domain" || "$domain" == \#* ]] && continue
+  allow_domain "$domain"
 done < "$DOMAINS_FILE"
 
 # ホスト（Mac）側のネットワークとはやり取りできるようにする（VS Code のポート転送など）
@@ -77,7 +99,8 @@ if curl -s --connect-timeout 5 https://example.com >/dev/null 2>&1; then
   echo "ERROR: 許可していない example.com に届いてしまった" >&2
   exit 1
 fi
-for url in https://api.github.com/zen https://registry.npmjs.org/; do
+# GitHub は回数制限のない github.com で確かめる
+for url in https://github.com/ https://registry.npmjs.org/; do
   if ! curl -s --connect-timeout 5 "$url" >/dev/null 2>&1; then
     echo "ERROR: $url に届かない" >&2
     exit 1
