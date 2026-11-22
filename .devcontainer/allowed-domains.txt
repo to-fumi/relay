@@ -1,0 +1,20 @@
+# Dev Container から外へ通信してよいドメイン（1 行に 1 つ）。GitHub は別に許可している
+# ここにないところへは通信できない。足すときは PR で直し、コンテナを作り直す
+
+# パッケージ
+registry.npmjs.org
+proxy.golang.org
+sum.golang.org
+vuln.go.dev
+
+# Claude Code（Remote Control を含む）
+api.anthropic.com
+claude.ai
+console.anthropic.com
+statsig.anthropic.com
+sentry.io
+
+# VS Code の拡張機能
+marketplace.visualstudio.com
+vscode.blob.core.windows.net
+update.code.visualstudio.com
