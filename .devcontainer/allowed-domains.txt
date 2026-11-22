@@ -4,6 +4,8 @@
 # パッケージ
 registry.npmjs.org
 proxy.golang.org
+# proxy.golang.org はモジュールの zip をここから配る（転送される）
+storage.googleapis.com
 sum.golang.org
 vuln.go.dev
 
