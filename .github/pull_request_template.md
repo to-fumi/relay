@@ -7,7 +7,7 @@ Closes #
 ## 確認
 
 - [ ] `pnpm task check`
-- [ ] 画面で確かめた（UI を変えたとき。390×844、ライトとダーク）
+- [ ] `pnpm task e2e` とスクショで画面を確かめた（画面か API を変えたとき）
 
 <details>
 <summary>詳細</summary>

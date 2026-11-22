@@ -68,6 +68,33 @@ tasks:
     cmds:
       - pnpm dev
 
+  # ---------- E2E ----------
+  e2e:
+    desc: E2E テストを実行し、画面のスクショを artifacts/screenshots に保存する（先に db:up しておく）
+    cmds:
+      - task: e2e:build
+      - task: e2e:test
+
+  e2e:build:
+    desc: E2E 用に SPA をビルドする（開発用ログイン）
+    dir: web
+    env:
+      VITE_AUTH_MODE: dev
+    cmds:
+      - pnpm exec vite build
+
+  e2e:test:
+    desc: ビルド済みの SPA を API サーバーから配信して、E2E テストだけを実行する
+    dir: web
+    cmds:
+      - pnpm exec playwright test {{.CLI_ARGS}}
+
+  e2e:install:
+    desc: E2E で使うブラウザ（Chromium）を入れる
+    dir: web
+    cmds:
+      - pnpm exec playwright install --with-deps chromium
+
   # ---------- API 仕様 ----------
   api:lint:
     desc: openapi.yaml を検証する
