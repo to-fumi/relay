@@ -20,27 +20,27 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-const userColumns = `id, entra_oid, display_name, email, is_admin`
+const userColumns = `id, oidc_issuer, oidc_sub, display_name, email, is_admin`
 
 func scanUser(row pgx.Row) (domain.User, error) {
 	var u domain.User
-	err := row.Scan(&u.ID, &u.EntraOID, &u.DisplayName, &u.Email, &u.IsAdmin)
+	err := row.Scan(&u.ID, &u.Issuer, &u.Subject, &u.DisplayName, &u.Email, &u.IsAdmin)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, domain.ErrNotFound
 	}
 	return u, err
 }
 
-func (r *Repository) UpsertByEntraOID(ctx context.Context, u domain.User) (domain.User, error) {
+func (r *Repository) UpsertBySubject(ctx context.Context, u domain.User) (domain.User, error) {
 	return scanUser(r.pool.QueryRow(ctx,
-		`INSERT INTO users (id, entra_oid, display_name, email, is_admin)
-		 VALUES ($1, $2, $3, $4, $5)
-		 ON CONFLICT (entra_oid) DO UPDATE
+		`INSERT INTO users (id, oidc_issuer, oidc_sub, display_name, email, is_admin)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 ON CONFLICT (oidc_issuer, oidc_sub) DO UPDATE
 		 SET display_name = EXCLUDED.display_name,
 		     email        = EXCLUDED.email,
 		     is_admin     = users.is_admin OR EXCLUDED.is_admin
 		 RETURNING `+userColumns,
-		u.ID, u.EntraOID, u.DisplayName, u.Email, u.IsAdmin,
+		u.ID, u.Issuer, u.Subject, u.DisplayName, u.Email, u.IsAdmin,
 	))
 }
 

@@ -7,3 +7,5 @@ generate:
   models: true
 output-options:
   skip-prune: true
+  # /auth/* はリダイレクトと Cookie を扱うので、platform/auth で手で書く
+  exclude-tags: [auth]

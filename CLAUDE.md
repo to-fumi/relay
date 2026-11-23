@@ -7,7 +7,7 @@
 - このリポジトリは個人用。会社用は、これをクローンしてバックエンドを Python に作り直す（SPA はそのまま使う）
   - そのため、API の正本は `api/openapi.yaml` に置き、E2E はバックエンドの実装に依存しない形で書く（Python 版が同じテストを通れば同じ動きになる）
 - SPA（React）＋ Go。サーバーサイドレンダリング（SSR）はしない（画面はすべてログインの後なので、SEO の効果がない）
-- 認証は Google アカウント（OIDC）に移す。サーバー側でログインを受け、セッションは httpOnly の Cookie で持つ（#7）。移し終えるまでは、下の「認証」は今の実装（Entra ID）の説明
+- 認証は Google アカウント（OIDC）。サーバー側でログインを受け、セッションは HttpOnly の Cookie で持つ（下の「認証」）
 
 ## 機能
 
@@ -49,7 +49,8 @@
 ## データモデル
 
 ```
-users        id, entra_oid(unique), display_name, email, is_admin, created_at
+users        id, oidc_issuer, oidc_sub, display_name, email, is_admin, created_at   ※ (oidc_issuer, oidc_sub) で一意
+sessions     id_hash(sha256), user_id, created_at, expires_at
 groups       id, name
 user_groups  user_id, group_id
 handoffs     id, jti(unique), from_user, to_user, item(text), qty, created_at, due_date(date, null), return_requested_at(null), returned_at(null)
@@ -61,13 +62,18 @@ handoffs     id, jti(unique), from_user, to_user, item(text), qty, created_at, d
 
 ## 認証
 
-※ Google（OIDC）とサーバー側のセッションに移す予定（#7）。移したら、この節を書き直す。
-
-- Entra ID。React（MSAL React）でアクセストークンを取得し、`Authorization: Bearer` ヘッダーで送る
-- バックエンドはJWTの署名、iss、aud、exp を検証する
-- MSALのトークンは `sessionStorage` に保存する（タブを閉じれば消える）
-- ログアウトのボタンは置かない。アクセストークンは MSAL が自動で更新し、更新できないとき（`InteractionRequiredAuthError`）や API が 401 を返したときは、保存済みのトークンを消してログインし直してもらう（`shared/auth` の `expireSession`）
-- 開発用ログイン（`AUTH_MODE=dev`）も 12 時間で期限切れにし、期限切れのものは読むときに消す
+- Google アカウント（OIDC）でログインする。設定（`OIDC_ISSUER` など）を変えれば、ほかの OIDC にも切り替えられる。設定の手順は `docs/google-setup.md`
+- ログインはサーバー側（`platform/auth`）で受ける。`GET /api/auth/login` → Google → `GET /api/auth/callback`（認可コードフロー、PKCE・state・nonce）
+  - ID トークンの署名・iss・aud・exp・nonce と `email_verified` を検証し、`ALLOWED_EMAILS` で使える人かを確かめる（`@example.com` はドメインで許す）
+  - ユーザーは初回のログインで自動で登録する（登録の画面はない）。`iss` と `sub` の組で人を見分け、表示名とメールアドレスはログインのたびに更新する。名前がなければメールアドレスの `@` より前にする
+  - Google のアクセストークンとリフレッシュトークンは使わない（保存もしない）
+- セッションは DB（`sessions`）に置き、Cookie（`relay_session`、`HttpOnly`、`SameSite=Lax`、HTTPS なら `Secure`）にはランダムな ID だけを入れる。期限は 1 日（`SESSION_TTL`）。期限切れや不明な ID は 401
+- 書き込みの API は、Go の `http.CrossOriginProtection` で別のサイトから呼ばせない（CSRF）
+- `/api/auth/*` は `api/openapi.yaml` に書くが、リダイレクトと Cookie を扱うので、Go ではコードを生成せずに手で書く（`oapi-codegen.yaml` の `exclude-tags`）
+- 画面はトークンを持たない。`/me` が 401 ならログインの画面を出す（`shared/auth` の `AuthGate`）。ほかの API が 401 を返したら `/me` を取り直す。ログアウトのボタンは置かない
+- 開発用ログイン（`AUTH_MODE=dev`）は `POST /api/auth/dev-login` にメールアドレスを送ると、その人のセッションを作る（`iss` は `dev`）
+- `AUTH_MODE` には初期値を置かない（書き忘れて開発用ログインで動かないように）。`AUTH_MODE=oidc` では `ALLOWED_EMAILS` が必須で、`HANDOFF_TOKEN_SECRET` が `.env.example` の値のままなら起動しない
+- どの応答にも `X-Frame-Options: DENY`・`X-Content-Type-Options: nosniff`・`Referrer-Policy` を付ける（`httpx.SecurityHeaders`）
 
 ## アーキテクチャ
 
@@ -112,7 +118,7 @@ backend-go/
 
 ```
 web/src/
-├── app/            # ルーティング、Provider（MSAL、TanStack Query）、レイアウト
+├── app/            # ルーティング、Provider（TanStack Query）、レイアウト
 ├── features/
 │   ├── handoff-issue/     # QR発行
 │   ├── handoff-receive/   # QR読み取り
@@ -126,7 +132,7 @@ web/src/
 
 ## 技術スタック
 
-- **Frontend**：React 19、Vite 8、TypeScript 6.0（strict）、TanStack Query、React Router、MSAL React、qrcode.react（表示）、@yudiel/react-qr-scanner（読み取り）、Cytoscape.js。APIクライアントと型は @hey-api/openapi-ts で生成する
+- **Frontend**：React 19、Vite 8、TypeScript 6.0（strict）、TanStack Query、React Router、qrcode.react（表示）、@yudiel/react-qr-scanner（読み取り）、Cytoscape.js。APIクライアントと型は @hey-api/openapi-ts で生成する
 - **UI**：Tailwind CSS v4（`@tailwindcss/vite`）、lucide-react（アイコン）。スマホを前提にした1カラム（`max-w-lg`）と下部タブ。ダークモードは `prefers-color-scheme` に従う
   - className の結合は `shared/lib` の `cn`（tailwind-merge で衝突を解決する）を使う
   - 文章は極力書かない。説明文や補足は置かず、アイコンで伝えられるものはアイコンにする（アイコンだけの操作には `aria-label` を付ける）
@@ -140,7 +146,7 @@ web/src/
 - **Backend**：Go 1.27（`go.mod` の `toolchain` で patch バージョンまで固定する。標準ライブラリの net/http、oapi-codegen の strict-server、pgx、goose、golang-jwt）、PostgreSQL 18
 - **Node**：24（`.node-version`）、pnpm（`packageManager` で固定する）
 - **配置**：SPAはAPIサーバーから一緒に配信し、1つのコンテナにまとめる
-- **外部への通信**：社内のプロキシで止まらないように、実行時に外部の CDN などへ取りに行くものは置かない（Entra ID のログインだけは例外）。QR を解読する wasm（`zxing-wasm`）もアプリと一緒に配信する（`shared/ui/QrScanner` の `prepareZXingModule`）。wasm と、ライブラリが使う JS のバージョンは `pnpm-workspace.yaml` の `overrides` で 1 つにそろえる
+- **外部への通信**：社内のプロキシで止まらないように、実行時に外部の CDN などへ取りに行くものは置かない（Google のログインだけは例外）。QR を解読する wasm（`zxing-wasm`）もアプリと一緒に配信する（`shared/ui/QrScanner` の `prepareZXingModule`）。wasm と、ライブラリが使う JS のバージョンは `pnpm-workspace.yaml` の `overrides` で 1 つにそろえる
 - **テスト**：APIテストはバックエンドの実装に依存しない形で書く（トークンは1回しか使えない、期限切れは失敗する、自分には渡せない、など）
 
 ## コマンド
@@ -158,7 +164,7 @@ pnpm task e2e                # E2E テストとスクショ（db:up が必要。
 
 - Dev Container（`.devcontainer/`）で開くと、Go・Node・pnpm・PostgreSQL 18・Playwright の Chromium・GitHub CLI・Claude Code がそろう。DB は一緒に起動するので `db:up` はいらない（実行しても何もしない）。CI でも同じコンテナで `task check` と `task e2e` を通す
 - `task` は npm の `@go-task/cli` で入る（`pnpm task ...` で呼ぶ）。Go の開発ツールは `backend-go/tools/go.mod` で管理し、`go tool -modfile=tools/go.mod <tool>` で呼ぶ
-- 開発中は `AUTH_MODE=dev`（バックエンド）と `VITE_AUTH_MODE=dev`（フロントエンド）で仮ログインを使う。トークンは `dev:<email>`
+- 開発中は `AUTH_MODE=dev`（バックエンド）と `VITE_AUTH_MODE=dev`（フロントエンド）で開発用ログインを使う（画面でメールアドレスを入れる。E2E や API を直接呼ぶときは `POST /api/auth/dev-login`）
 - API を追加するときの順番：`api/openapi.yaml` を変更する → `pnpm task gen` → `cmd/relay/server.go` の `server` がまだ満たしていないメソッドがコンパイルエラーになるので、担当するモジュールの `adapter/http` に実装する
 - DB のマイグレーションは `backend-go/internal/platform/postgres/migrations/` に goose の形式で追加する（起動時に自動で適用する）
 

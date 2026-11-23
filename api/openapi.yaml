@@ -9,14 +9,75 @@ info:
 servers:
   - url: /api
 security:
-  - bearerAuth: []
+  - sessionCookie: []
 tags:
+  - name: auth
+    description: ログインとセッション。リダイレクトと Cookie を扱うので、Go ではコードを生成せずに手で書く（platform/auth）
   - name: identity
     description: ログイン中のユーザー
   - name: handoff
     description: 受け渡しの記録
 
 paths:
+  /auth/login:
+    get:
+      operationId: login
+      summary: OIDC（Google など）のログイン画面へリダイレクトする
+      description: state・nonce・PKCE を短い Cookie に入れてから、プロバイダーへ移る。AUTH_MODE=oidc のときだけ使える
+      tags: [auth]
+      security: []
+      responses:
+        "302":
+          description: プロバイダーのログイン画面へ
+        "404":
+          description: OIDC のログインを使っていない
+
+  /auth/callback:
+    get:
+      operationId: loginCallback
+      summary: プロバイダーから戻ってきたときに、ID トークンを検証してセッションを作る
+      description: |
+        ID トークンの署名・iss・aud・exp・nonce と email_verified を検証し、ALLOWED_EMAILS で使える人かを確かめる。
+        初回はユーザーを登録する。セッションの ID は Cookie（relay_session、HttpOnly、SameSite=Lax）に入れる。
+        成功したら / へ、失敗したら /?login=failed（使えない人なら /?login=forbidden）へ戻す。
+      tags: [auth]
+      security: []
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: 画面（/）へ戻す
+        "404":
+          description: OIDC のログインを使っていない
+
+  /auth/dev-login:
+    post:
+      operationId: devLogin
+      summary: 開発用ログイン。メールアドレスだけで、その人としてセッションを作る
+      description: AUTH_MODE=dev のときだけ使える。セッションの ID は Cookie（relay_session）に入れる
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevLoginRequest"
+      responses:
+        "204":
+          description: ログインした
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: 開発用ログインを使っていない
+
   /me:
     get:
       operationId: getMe
@@ -274,10 +335,10 @@ paths:
 
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: relay_session
 
   responses:
     BadRequest:
@@ -300,6 +361,14 @@ components:
             $ref: "#/components/schemas/Problem"
 
   schemas:
+    DevLoginRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
     User:
       type: object
       required: [id, displayName, email, isAdmin]

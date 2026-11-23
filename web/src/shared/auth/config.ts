@@ -1,9 +1,4 @@
-export type AuthMode = "dev" | "entra";
+/** dev：開発用ログイン（メールアドレスを入れるだけ）。oidc：Google などでログインする（サーバー側で受ける） */
+export type AuthMode = "dev" | "oidc";
 
-export const authMode: AuthMode = import.meta.env.VITE_AUTH_MODE === "entra" ? "entra" : "dev";
-
-export const entraConfig = {
-  clientId: import.meta.env.VITE_ENTRA_CLIENT_ID ?? "",
-  tenantId: import.meta.env.VITE_ENTRA_TENANT_ID ?? "",
-  apiScope: import.meta.env.VITE_ENTRA_API_SCOPE ?? "",
-};
+export const authMode: AuthMode = import.meta.env.VITE_AUTH_MODE === "oidc" ? "oidc" : "dev";

@@ -4,6 +4,10 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}/api` | (string & {});
 };
 
+export type DevLoginRequest = {
+    email: string;
+};
+
 export type User = {
     id: string;
     displayName: string;
@@ -87,6 +91,66 @@ export type Problem = {
     status: number;
     detail?: string;
 };
+
+export type LoginData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/login';
+};
+
+export type LoginErrors = {
+    /**
+     * OIDC のログインを使っていない
+     */
+    404: unknown;
+};
+
+export type LoginCallbackData = {
+    body?: never;
+    path?: never;
+    query?: {
+        code?: string;
+        state?: string;
+    };
+    url: '/auth/callback';
+};
+
+export type LoginCallbackErrors = {
+    /**
+     * OIDC のログインを使っていない
+     */
+    404: unknown;
+};
+
+export type DevLoginData = {
+    body: DevLoginRequest;
+    path?: never;
+    query?: never;
+    url: '/auth/dev-login';
+};
+
+export type DevLoginErrors = {
+    /**
+     * 入力またはトークンが不正、もしくは期限切れ
+     */
+    400: Problem;
+    /**
+     * 開発用ログインを使っていない
+     */
+    404: unknown;
+};
+
+export type DevLoginError = DevLoginErrors[keyof DevLoginErrors];
+
+export type DevLoginResponses = {
+    /**
+     * ログインした
+     */
+    204: void;
+};
+
+export type DevLoginResponse = DevLoginResponses[keyof DevLoginResponses];
 
 export type GetMeData = {
     body?: never;
