@@ -2,6 +2,13 @@
 
 備品の受け渡しを記録し、そのログを分析・可視化するWebアプリ。
 
+## 方針
+
+- このリポジトリは個人用。会社用は、これをクローンしてバックエンドを Python に作り直す（SPA はそのまま使う）
+  - そのため、API の正本は `api/openapi.yaml` に置き、E2E はバックエンドの実装に依存しない形で書く（Python 版が同じテストを通れば同じ動きになる）
+- SPA（React）＋ Go。サーバーサイドレンダリング（SSR）はしない（画面はすべてログインの後なので、SEO の効果がない）
+- 認証は Google アカウント（OIDC）に移す。サーバー側でログインを受け、セッションは httpOnly の Cookie で持つ（#7）。移し終えるまでは、下の「認証」は今の実装（Entra ID）の説明
+
 ## 機能
 
 ### 受け渡しの記録（QR）
@@ -53,6 +60,8 @@ handoffs     id, jti(unique), from_user, to_user, item(text), qty, created_at, d
 グループごとの集計は、今の所属で行う。
 
 ## 認証
+
+※ Google（OIDC）とサーバー側のセッションに移す予定（#7）。移したら、この節を書き直す。
 
 - Entra ID。React（MSAL React）でアクセストークンを取得し、`Authorization: Bearer` ヘッダーで送る
 - バックエンドはJWTの署名、iss、aud、exp を検証する
