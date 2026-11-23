@@ -116,7 +116,7 @@ test("対面でない返却をまとめて送る", async ({ page, playwright, ba
 
   await test.step("suzuki：まとめて送ると、承認待ちになる", async () => {
     await page.getByRole("button", { name: "選んだものの返却を送信" }).click();
-    await expect(page.getByText("返却の承認待ち")).toHaveCount(2);
+    await expect(page.getByText("承認待ち")).toHaveCount(2);
     await expect(page.getByRole("checkbox")).toHaveCount(1);
     await expect(page.getByRole("button", { name: "選んだものの返却を送信" })).toBeHidden();
     await shot(page, testInfo, "11-return-requested");
@@ -126,6 +126,7 @@ test("対面でない返却をまとめて送る", async ({ page, playwright, ba
     await loginAs(page, u.sato);
     await page.goto("/waiting");
     await expect(page.getByRole("checkbox")).toHaveCount(2);
+    await expect(page.getByText("返却あり")).toHaveCount(2);
     await page.getByRole("checkbox", { name: /LANケーブル/ }).check();
     await page.getByRole("checkbox", { name: /モバイルモニター/ }).check();
     await shot(page, testInfo, "12-waiting-select");
