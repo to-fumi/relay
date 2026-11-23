@@ -57,6 +57,7 @@ export function ReturnPage() {
           <LoanRow
             key={h.id}
             handoff={h}
+            side="borrower"
             partner={h.from.displayName}
             selectable
             select={

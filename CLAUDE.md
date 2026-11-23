@@ -16,7 +16,7 @@
 - 返却もQRで行う：借りた側（to）が返却タブの「返す」で返却QRを発行する（`POST /return-tokens`）→ 貸した側（from）が返却タブの「待ち」の「読取」で読み取る（`POST /returns`）→ `returned_at` を記録する
 - 対面でないときは、まとめて返却する：借りた側が「返す」で品目を選んで送る（`POST /return-requests`、`return_requested_at` を記録する）→ 貸した側が「待ち」で届いたものを選んで承認する（`POST /return-confirmations`、`returned_at` を記録する）
   - 貸した人が違うものも一緒に送れる。1 件でも送れない・承認できないものがあれば、全体を失敗にする。一部の数量だけ返すことはできない
-  - 承認待ちのあいだも、返却QRで返せる
+  - 承認待ちのあいだは、借りた側に「承認待ち」、貸した側に「返却あり」のチップを出す。承認待ちのあいだも、返却QRで返せる
 - 間違えて「受け取る」で返却QRを読んだときも記録できるようにする：API が type `urn:relay:problem:return-token` の 400 を返すので、同じトークンで `POST /returns` を呼び直す
 
 - QRの中身はサーバーが署名した短いトークン（`handoff/adapter/token`）。トークンはどこにも保存しない

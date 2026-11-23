@@ -1,11 +1,14 @@
-import { Send } from "lucide-react";
+import { Hourglass, Undo2 } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import type { Handoff } from "../../shared/api";
+import { cn } from "../../shared/lib";
 import { DueBadge } from "../../shared/ui";
 
 type Props = {
   handoff: Handoff;
   partner: string;
+  /** 自分が借りた側（返す）か、貸した側（待ち）か。対面でない返却の状態の出し方が変わる */
+  side: "borrower" | "lender";
   /** 選べる行にするとき。選べない行は左を空けて、ほかの行とそろえる */
   select?: { checked: boolean; onChange: (checked: boolean) => void };
   /** 左に選ぶ欄を置く一覧か */
@@ -15,7 +18,7 @@ type Props = {
 };
 
 /** 1 行目：品目 → 数量、2 行目：相手 → 返却期限。左に選ぶ欄、右端に操作を置ける */
-export function LoanRow({ handoff: h, partner, select, selectable, action }: Props) {
+export function LoanRow({ handoff: h, partner, side, select, selectable, action }: Props) {
   const id = useId();
   const Info = select ? "label" : "div";
   return (
@@ -36,10 +39,11 @@ export function LoanRow({ handoff: h, partner, select, selectable, action }: Pro
           <span className="truncate font-medium">{h.item}</span>
           <span className="shrink-0 font-semibold tabular-nums">×{h.qty}</span>
         </span>
-        <span className="flex items-center justify-between gap-3">
-          <span className="truncate text-sm text-zinc-500 dark:text-zinc-400">{partner}</span>
-          <span className="flex shrink-0 items-center gap-1.5">
-            {h.returnRequestedAt && <RequestedBadge />}
+        {/* 相手の名前を切らないように、入りきらなければ状態と期限を次の行の右に回す */}
+        <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+          <span className="max-w-full truncate text-sm text-zinc-500 dark:text-zinc-400">{partner}</span>
+          <span className="ml-auto flex shrink-0 items-center gap-1.5">
+            {h.returnRequestedAt && <RequestedChip side={side} />}
             {h.dueDate && <DueBadge dueDate={h.dueDate} />}
           </span>
         </span>
@@ -49,12 +53,32 @@ export function LoanRow({ handoff: h, partner, select, selectable, action }: Pro
   );
 }
 
-/** 対面でない返却が送られて、貸した側の承認待ちであること */
-function RequestedBadge() {
+/**
+ * 対面でない返却が送られて、貸した側の承認を待っていること。
+ * 借りた側には「承認待ち」、貸した側には「返却あり」（届いたものを確かめて承認する）と出す。
+ */
+function RequestedChip({ side }: { side: "borrower" | "lender" }) {
+  const { Icon, label, tone } =
+    side === "borrower"
+      ? {
+          Icon: Hourglass,
+          label: "承認待ち",
+          tone: "bg-zinc-100 text-zinc-700 ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:ring-zinc-600",
+        }
+      : {
+          Icon: Undo2,
+          label: "返却あり",
+          tone: "bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:ring-indigo-800",
+        };
   return (
-    <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700 text-xs dark:bg-indigo-950 dark:text-indigo-300">
-      <Send className="size-3.5" aria-hidden />
-      <span className="sr-only">返却の承認待ち</span>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold text-xs ring-1 ring-inset",
+        tone,
+      )}
+    >
+      <Icon className="size-3.5" aria-hidden />
+      {label}
     </span>
   );
 }

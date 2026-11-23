@@ -53,6 +53,7 @@ export function WaitingPage() {
             <LoanRow
               key={h.id}
               handoff={h}
+              side="lender"
               partner={h.to.displayName}
               selectable={requested.length > 0}
               select={
