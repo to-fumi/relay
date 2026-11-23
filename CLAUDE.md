@@ -72,6 +72,8 @@ handoffs     id, jti(unique), from_user, to_user, item(text), qty, created_at, d
 - `/api/auth/*` は `api/openapi.yaml` に書くが、リダイレクトと Cookie を扱うので、Go ではコードを生成せずに手で書く（`oapi-codegen.yaml` の `exclude-tags`）
 - 画面はトークンを持たない。`/me` が 401 ならログインの画面を出す（`shared/auth` の `AuthGate`）。ほかの API が 401 を返したら `/me` を取り直す。ログアウトのボタンは置かない
 - 開発用ログイン（`AUTH_MODE=dev`）は `POST /api/auth/dev-login` にメールアドレスを送ると、その人のセッションを作る（`iss` は `dev`）
+- `AUTH_MODE` には初期値を置かない（書き忘れて開発用ログインで動かないように）。`AUTH_MODE=oidc` では `ALLOWED_EMAILS` が必須で、`HANDOFF_TOKEN_SECRET` が `.env.example` の値のままなら起動しない
+- どの応答にも `X-Frame-Options: DENY`・`X-Content-Type-Options: nosniff`・`Referrer-Policy` を付ける（`httpx.SecurityHeaders`）
 
 ## アーキテクチャ
 

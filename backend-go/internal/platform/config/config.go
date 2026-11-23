@@ -36,10 +36,11 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
-		Addr:               getenv("ADDR", ":8080"),
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
-		StaticDir:          os.Getenv("STATIC_DIR"),
-		AuthMode:           AuthMode(getenv("AUTH_MODE", string(AuthModeDev))),
+		Addr:        getenv("ADDR", ":8080"),
+		DatabaseURL: os.Getenv("DATABASE_URL"),
+		StaticDir:   os.Getenv("STATIC_DIR"),
+		// 書き忘れて開発用ログイン（誰にでもなりすませる）で動かないよう、初期値は置かない
+		AuthMode:           AuthMode(os.Getenv("AUTH_MODE")),
 		OIDCIssuer:         getenv("OIDC_ISSUER", "https://accounts.google.com"),
 		OIDCClientID:       os.Getenv("OIDC_CLIENT_ID"),
 		OIDCClientSecret:   os.Getenv("OIDC_CLIENT_SECRET"),
@@ -75,6 +76,8 @@ func Load() (Config, error) {
 		errs = append(errs, errors.New("HANDOFF_TOKEN_SECRET must be at least 32 bytes"))
 	}
 	switch cfg.AuthMode {
+	case "":
+		errs = append(errs, errors.New("AUTH_MODE is required (dev or oidc)"))
 	case AuthModeDev:
 	case AuthModeOIDC:
 		if cfg.OIDCClientID == "" || cfg.OIDCClientSecret == "" || cfg.OIDCRedirectURL == "" {
@@ -83,6 +86,10 @@ func Load() (Config, error) {
 		// 誰でもログインできる状態にしない
 		if len(cfg.AllowedEmails) == 0 {
 			errs = append(errs, errors.New("ALLOWED_EMAILS is required when AUTH_MODE=oidc"))
+		}
+		// .env.example の値のまま本番で動かさない（QR トークンを誰でも作れてしまう）
+		if strings.Contains(string(cfg.HandoffTokenSecret), "change-me") {
+			errs = append(errs, errors.New("HANDOFF_TOKEN_SECRET must be changed from the example value"))
 		}
 	default:
 		errs = append(errs, fmt.Errorf("unknown AUTH_MODE %q", cfg.AuthMode))

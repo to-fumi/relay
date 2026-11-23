@@ -115,7 +115,7 @@ func run(ctx context.Context) error {
 
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           csrf.Handler(mux),
+		Handler:           httpx.SecurityHeaders(csrf.Handler(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
