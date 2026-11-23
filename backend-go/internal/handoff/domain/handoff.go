@@ -21,6 +21,10 @@ var (
 	ErrAlreadyReturned = errors.New("handoff already returned")
 	ErrNotBorrower     = errors.New("only the borrower can return this handoff")
 	ErrNotLender       = errors.New("only the lender can record the return")
+	// ErrReturnAlreadyRequested は、対面でない返却がすでに送られて承認待ちであることを表す。
+	ErrReturnAlreadyRequested = errors.New("return already requested")
+	// ErrReturnNotRequested は、承認しようとした返却がまだ送られていないことを表す。
+	ErrReturnNotRequested = errors.New("return has not been requested")
 )
 
 // Item は受け渡す品目名（自由入力）。
@@ -69,17 +73,18 @@ func (d DueDate) CheckNotBefore(today DueDate) error {
 	return nil
 }
 
-// Handoff は 1 回の受け渡しの記録。返却期限がある場合は、返却されたときに returnedAt だけを変更する。
+// Handoff は 1 回の受け渡しの記録。返却期限がある場合は、返却の手続きで returnRequestedAt と returnedAt だけを変更する。
 type Handoff struct {
-	id         uuid.UUID
-	jti        string
-	from       uuid.UUID
-	to         uuid.UUID
-	item       Item
-	qty        Quantity
-	createdAt  time.Time
-	due        *DueDate
-	returnedAt *time.Time
+	id                uuid.UUID
+	jti               string
+	from              uuid.UUID
+	to                uuid.UUID
+	item              Item
+	qty               Quantity
+	createdAt         time.Time
+	due               *DueDate
+	returnRequestedAt *time.Time
+	returnedAt        *time.Time
 }
 
 // NewHandoff は新しい受け渡しを作る。jti は QR トークンの ID で、同じトークンによる二重記録を防ぐために使う。
@@ -92,10 +97,10 @@ func NewHandoff(id uuid.UUID, jti string, from, to uuid.UUID, item Item, qty Qua
 }
 
 // Restore は永続化された値から Handoff を復元する（リポジトリの実装から使う）。
-func Restore(id uuid.UUID, jti string, from, to uuid.UUID, item string, qty int, at time.Time, due *DueDate, returnedAt *time.Time) Handoff {
+func Restore(id uuid.UUID, jti string, from, to uuid.UUID, item string, qty int, at time.Time, due *DueDate, returnRequestedAt, returnedAt *time.Time) Handoff {
 	return Handoff{
 		id: id, jti: jti, from: from, to: to, item: Item(item), qty: Quantity(qty),
-		createdAt: at, due: due, returnedAt: returnedAt,
+		createdAt: at, due: due, returnRequestedAt: returnRequestedAt, returnedAt: returnedAt,
 	}
 }
 
@@ -110,6 +115,9 @@ func (h Handoff) CreatedAt() time.Time { return h.createdAt }
 // DueDate は返却期限を返す。返却の必要がない受け渡しでは nil。
 func (h Handoff) DueDate() *DueDate { return h.due }
 
+// ReturnRequestedAt は対面でない返却を送った日時を返す。送っていなければ nil。
+func (h Handoff) ReturnRequestedAt() *time.Time { return h.returnRequestedAt }
+
 // ReturnedAt は返却された日時を返す。まだ返却されていなければ nil。
 func (h Handoff) ReturnedAt() *time.Time { return h.returnedAt }
 
@@ -119,6 +127,33 @@ func (h Handoff) CheckReturnableBy(borrower uuid.UUID) error {
 		return ErrNotBorrower
 	}
 	return h.checkOutstanding()
+}
+
+// RequestReturn は borrower（受け取った人）が、対面でない返却を送ったことを記録する。貸した人の承認待ちになる。
+func (h *Handoff) RequestReturn(borrower uuid.UUID, at time.Time) error {
+	if err := h.CheckReturnableBy(borrower); err != nil {
+		return err
+	}
+	if h.returnRequestedAt != nil {
+		return ErrReturnAlreadyRequested
+	}
+	h.returnRequestedAt = &at
+	return nil
+}
+
+// ConfirmReturn は lender（渡した人）が、送られた返却を承認したことを記録する。
+func (h *Handoff) ConfirmReturn(lender uuid.UUID, at time.Time) error {
+	if lender != h.from {
+		return ErrNotLender
+	}
+	if err := h.checkOutstanding(); err != nil {
+		return err
+	}
+	if h.returnRequestedAt == nil {
+		return ErrReturnNotRequested
+	}
+	h.returnedAt = &at
+	return nil
 }
 
 // MarkReturned は lender（渡した人）が返却を受け取ったことを記録する。

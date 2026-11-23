@@ -121,3 +121,41 @@ func TestMarkReturned(t *testing.T) {
 		}
 	})
 }
+
+func TestRequestAndConfirmReturn(t *testing.T) {
+	lender, borrower := uuid.New(), uuid.New()
+	due := domain.NewDueDate(2026, 11, 28)
+	h, err := domain.NewHandoff(uuid.New(), "jti", lender, borrower, "item", 1, &due, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := h.ConfirmReturn(lender, time.Now()); !errors.Is(err, domain.ErrReturnNotRequested) {
+		t.Fatalf("confirm before request: err = %v; want ErrReturnNotRequested", err)
+	}
+	if err := h.RequestReturn(lender, time.Now()); !errors.Is(err, domain.ErrNotBorrower) {
+		t.Fatalf("request by lender: err = %v; want ErrNotBorrower", err)
+	}
+	requested := time.Now()
+	if err := h.RequestReturn(borrower, requested); err != nil {
+		t.Fatal(err)
+	}
+	if h.ReturnRequestedAt() == nil || !h.ReturnRequestedAt().Equal(requested) || h.ReturnedAt() != nil {
+		t.Fatalf("after request: requested=%v returned=%v", h.ReturnRequestedAt(), h.ReturnedAt())
+	}
+	if err := h.RequestReturn(borrower, time.Now()); !errors.Is(err, domain.ErrReturnAlreadyRequested) {
+		t.Fatalf("request twice: err = %v; want ErrReturnAlreadyRequested", err)
+	}
+	if err := h.ConfirmReturn(borrower, time.Now()); !errors.Is(err, domain.ErrNotLender) {
+		t.Fatalf("confirm by borrower: err = %v; want ErrNotLender", err)
+	}
+	if err := h.ConfirmReturn(lender, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if h.ReturnedAt() == nil {
+		t.Fatal("ReturnedAt is nil after confirm")
+	}
+	if err := h.ConfirmReturn(lender, time.Now()); !errors.Is(err, domain.ErrAlreadyReturned) {
+		t.Fatalf("confirm twice: err = %v; want ErrAlreadyReturned", err)
+	}
+}

@@ -152,16 +152,65 @@ func (h *Handler) ReturnHandoff(ctx context.Context, req api.ReturnHandoffReques
 	return api.ReturnHandoff200JSONResponse(toAPI(v)), nil
 }
 
+func (h *Handler) RequestReturns(ctx context.Context, req api.RequestReturnsRequestObject) (api.RequestReturnsResponseObject, error) {
+	me, ok := auth.UserIDFrom(ctx)
+	if !ok {
+		return nil, errNoUser
+	}
+	vs, err := h.svc.RequestReturns(ctx, me, req.Body.HandoffIds)
+	switch {
+	case errors.Is(err, application.ErrInvalidSelection), errors.Is(err, domain.ErrNotReturnable):
+		return api.RequestReturns400ApplicationProblemPlusJSONResponse{BadRequestApplicationProblemPlusJSONResponse: api.BadRequestApplicationProblemPlusJSONResponse(problem(http.StatusBadRequest, err))}, nil
+	// 借りた本人でない場合も、記録があることを知らせないために 404 にする
+	case errors.Is(err, domain.ErrNotFound), errors.Is(err, domain.ErrNotBorrower):
+		return api.RequestReturns404ApplicationProblemPlusJSONResponse{NotFoundApplicationProblemPlusJSONResponse: api.NotFoundApplicationProblemPlusJSONResponse(problem(http.StatusNotFound, domain.ErrNotFound))}, nil
+	case errors.Is(err, domain.ErrAlreadyReturned), errors.Is(err, domain.ErrReturnAlreadyRequested):
+		return api.RequestReturns409ApplicationProblemPlusJSONResponse(problem(http.StatusConflict, err)), nil
+	case err != nil:
+		return nil, err
+	}
+	return api.RequestReturns200JSONResponse(toAPIs(vs)), nil
+}
+
+func (h *Handler) ConfirmReturns(ctx context.Context, req api.ConfirmReturnsRequestObject) (api.ConfirmReturnsResponseObject, error) {
+	me, ok := auth.UserIDFrom(ctx)
+	if !ok {
+		return nil, errNoUser
+	}
+	vs, err := h.svc.ConfirmReturns(ctx, me, req.Body.HandoffIds)
+	switch {
+	case errors.Is(err, application.ErrInvalidSelection), errors.Is(err, domain.ErrNotReturnable):
+		return api.ConfirmReturns400ApplicationProblemPlusJSONResponse{BadRequestApplicationProblemPlusJSONResponse: api.BadRequestApplicationProblemPlusJSONResponse(problem(http.StatusBadRequest, err))}, nil
+	// 貸した本人でない場合も、記録があることを知らせないために 404 にする
+	case errors.Is(err, domain.ErrNotFound), errors.Is(err, domain.ErrNotLender):
+		return api.ConfirmReturns404ApplicationProblemPlusJSONResponse{NotFoundApplicationProblemPlusJSONResponse: api.NotFoundApplicationProblemPlusJSONResponse(problem(http.StatusNotFound, domain.ErrNotFound))}, nil
+	case errors.Is(err, domain.ErrAlreadyReturned), errors.Is(err, domain.ErrReturnNotRequested):
+		return api.ConfirmReturns409ApplicationProblemPlusJSONResponse(problem(http.StatusConflict, err)), nil
+	case err != nil:
+		return nil, err
+	}
+	return api.ConfirmReturns200JSONResponse(toAPIs(vs)), nil
+}
+
+func toAPIs(vs []application.HandoffView) []api.Handoff {
+	out := make([]api.Handoff, len(vs))
+	for i, v := range vs {
+		out[i] = toAPI(v)
+	}
+	return out
+}
+
 func toAPI(v application.HandoffView) api.Handoff {
 	out := api.Handoff{
-		Id:         v.ID,
-		Jti:        v.JTI,
-		From:       api.UserSummary{Id: v.From.ID, DisplayName: v.From.DisplayName},
-		To:         api.UserSummary{Id: v.To.ID, DisplayName: v.To.DisplayName},
-		Item:       v.Item,
-		Qty:        v.Qty,
-		CreatedAt:  v.CreatedAt,
-		ReturnedAt: v.ReturnedAt,
+		Id:                v.ID,
+		Jti:               v.JTI,
+		From:              api.UserSummary{Id: v.From.ID, DisplayName: v.From.DisplayName},
+		To:                api.UserSummary{Id: v.To.ID, DisplayName: v.To.DisplayName},
+		Item:              v.Item,
+		Qty:               v.Qty,
+		CreatedAt:         v.CreatedAt,
+		ReturnedAt:        v.ReturnedAt,
+		ReturnRequestedAt: v.ReturnRequestedAt,
 	}
 	if v.DueDate != nil {
 		out.DueDate = &openapi_types.Date{Time: *v.DueDate}

@@ -47,6 +47,40 @@ func (r *memRepo) SaveReturn(_ context.Context, h domain.Handoff) error {
 	return domain.ErrNotFound
 }
 
+func (r *memRepo) GetMany(ctx context.Context, ids []uuid.UUID) ([]domain.Handoff, error) {
+	out := make([]domain.Handoff, len(ids))
+	for i, id := range ids {
+		h, err := r.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = h
+	}
+	return out, nil
+}
+
+func (r *memRepo) SaveReturnRequests(_ context.Context, hs []domain.Handoff) error {
+	return r.replaceAll(hs, func(s domain.Handoff) bool { return s.ReturnedAt() == nil && s.ReturnRequestedAt() == nil })
+}
+
+func (r *memRepo) SaveConfirmedReturns(_ context.Context, hs []domain.Handoff) error {
+	return r.replaceAll(hs, func(s domain.Handoff) bool { return s.ReturnedAt() == nil && s.ReturnRequestedAt() != nil })
+}
+
+// replaceAll は、保存済みのものがすべて ok を満たすときだけ hs で置き換える。
+func (r *memRepo) replaceAll(hs []domain.Handoff, ok func(domain.Handoff) bool) error {
+	next := slices.Clone(r.saved)
+	for _, h := range hs {
+		i := slices.IndexFunc(next, func(s domain.Handoff) bool { return s.ID() == h.ID() })
+		if i < 0 || !ok(next[i]) {
+			return domain.ErrAlreadyReturned
+		}
+		next[i] = h
+	}
+	r.saved = next
+	return nil
+}
+
 func (r *memRepo) ListByUser(context.Context, uuid.UUID, int) ([]domain.Handoff, error) {
 	return r.saved, nil
 }
@@ -329,5 +363,152 @@ func TestIssueReturnToken_OnlyBorrowerOfLoan(t *testing.T) {
 	noDue, _ := f.svc.Receive(ctx, f.to, issued.Token)
 	if _, err := f.svc.IssueReturnToken(ctx, f.to, noDue.ID); !errors.Is(err, domain.ErrNotReturnable) {
 		t.Errorf("no due date: err = %v; want ErrNotReturnable", err)
+	}
+}
+
+// lendFrom は lender が f.to に、返却期限付きで渡した記録を作る。
+func (f *fixture) lendFrom(t *testing.T, lender uuid.UUID) application.HandoffView {
+	t.Helper()
+	ctx := context.Background()
+	issued, err := f.svc.IssueToken(ctx, lender, "ケーブル", 1, dueDate(2026, 11, 28))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := f.svc.Receive(ctx, f.to, issued.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+func TestRequestReturns_ThenLendersConfirm(t *testing.T) {
+	f := newFixture()
+	ctx := context.Background()
+	other := uuid.New()
+	a, b := f.lend(t), f.lendFrom(t, other)
+
+	// 貸した人が違うものも、まとめて送れる
+	got, err := f.svc.RequestReturns(ctx, f.to, []uuid.UUID{a.ID, b.ID, a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len = %d; want 2 (duplicates removed)", len(got))
+	}
+	for _, v := range got {
+		if v.ReturnRequestedAt == nil || !v.ReturnRequestedAt.Equal(f.now) || v.ReturnedAt != nil {
+			t.Fatalf("after request: %+v", v)
+		}
+	}
+	// 承認されるまでは返却リストに残る
+	if out, _ := f.svc.ListOutstanding(ctx, f.to); len(out) != 2 {
+		t.Fatalf("outstanding = %d; want 2", len(out))
+	}
+
+	// それぞれの貸した人が承認する。他人に貸したものは承認できない
+	if _, err := f.svc.ConfirmReturns(ctx, f.from, []uuid.UUID{a.ID, b.ID}); !errors.Is(err, domain.ErrNotLender) {
+		t.Fatalf("confirm other's loan: err = %v; want ErrNotLender", err)
+	}
+	f.now = f.now.Add(time.Hour)
+	done, err := f.svc.ConfirmReturns(ctx, f.from, []uuid.UUID{a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done[0].ReturnedAt == nil || !done[0].ReturnedAt.Equal(f.now) {
+		t.Fatalf("ReturnedAt = %v; want %v", done[0].ReturnedAt, f.now)
+	}
+	if _, err := f.svc.ConfirmReturns(ctx, other, []uuid.UUID{b.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := f.svc.ListOutstanding(ctx, f.to); len(out) != 0 {
+		t.Fatalf("outstanding after confirm = %d; want 0", len(out))
+	}
+}
+
+func TestRequestReturns_AllOrNothing(t *testing.T) {
+	f := newFixture()
+	ctx := context.Background()
+	a, b := f.lend(t), f.lend(t)
+	if _, err := f.svc.RequestReturns(ctx, f.to, []uuid.UUID{a.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	issued, _ := f.svc.IssueToken(ctx, f.from, "x", 1, nil)
+	noDue, _ := f.svc.Receive(ctx, f.to, issued.Token)
+
+	tests := []struct {
+		name string
+		ids  []uuid.UUID
+		who  uuid.UUID
+		want error
+	}{
+		{"already requested", []uuid.UUID{b.ID, a.ID}, f.to, domain.ErrReturnAlreadyRequested},
+		{"not borrower", []uuid.UUID{b.ID}, f.from, domain.ErrNotBorrower},
+		{"unknown id", []uuid.UUID{b.ID, uuid.New()}, f.to, domain.ErrNotFound},
+		{"no due date", []uuid.UUID{b.ID, noDue.ID}, f.to, domain.ErrNotReturnable},
+		{"empty", nil, f.to, application.ErrInvalidSelection},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := f.svc.RequestReturns(ctx, tt.who, tt.ids); !errors.Is(err, tt.want) {
+				t.Fatalf("err = %v; want %v", err, tt.want)
+			}
+			// b はどの失敗でも記録されない
+			if h, _ := f.repo.Get(ctx, b.ID); h.ReturnRequestedAt() != nil {
+				t.Fatal("b was requested despite the failure")
+			}
+		})
+	}
+}
+
+func TestRequestReturns_TooMany(t *testing.T) {
+	f := newFixture()
+	ids := make([]uuid.UUID, application.MaxBatch+1)
+	for i := range ids {
+		ids[i] = uuid.New()
+	}
+	if _, err := f.svc.RequestReturns(context.Background(), f.to, ids); !errors.Is(err, application.ErrInvalidSelection) {
+		t.Fatalf("err = %v; want ErrInvalidSelection", err)
+	}
+}
+
+func TestConfirmReturns_AllOrNothing(t *testing.T) {
+	f := newFixture()
+	ctx := context.Background()
+	a, b := f.lend(t), f.lend(t)
+	if _, err := f.svc.RequestReturns(ctx, f.to, []uuid.UUID{a.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.svc.ConfirmReturns(ctx, f.from, []uuid.UUID{a.ID, b.ID}); !errors.Is(err, domain.ErrReturnNotRequested) {
+		t.Fatalf("err = %v; want ErrReturnNotRequested", err)
+	}
+	if h, _ := f.repo.Get(ctx, a.ID); h.ReturnedAt() != nil {
+		t.Fatal("a was returned despite the failure")
+	}
+	if _, err := f.svc.ConfirmReturns(ctx, f.from, []uuid.UUID{a.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.ConfirmReturns(ctx, f.from, []uuid.UUID{a.ID}); !errors.Is(err, domain.ErrAlreadyReturned) {
+		t.Fatalf("confirm twice: err = %v; want ErrAlreadyReturned", err)
+	}
+}
+
+func TestReturn_QRStillWorksWhileRequested(t *testing.T) {
+	f := newFixture()
+	ctx := context.Background()
+	h := f.lend(t)
+	if _, err := f.svc.RequestReturns(ctx, f.to, []uuid.UUID{h.ID}); err != nil {
+		t.Fatal(err)
+	}
+	ret, err := f.svc.IssueReturnToken(ctx, f.to, h.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Return(ctx, f.from, ret.Token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.ConfirmReturns(ctx, f.from, []uuid.UUID{h.ID}); !errors.Is(err, domain.ErrAlreadyReturned) {
+		t.Fatalf("err = %v; want ErrAlreadyReturned", err)
 	}
 }

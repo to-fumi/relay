@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetMeData, GetMeErrors, GetMeResponses, IssueHandoffTokenData, IssueHandoffTokenErrors, IssueHandoffTokenResponses, IssueReturnTokenData, IssueReturnTokenErrors, IssueReturnTokenResponses, ListMyHandoffsData, ListMyHandoffsErrors, ListMyHandoffsResponses, ListMyOutstandingHandoffsData, ListMyOutstandingHandoffsErrors, ListMyOutstandingHandoffsResponses, ReceiveHandoffData, ReceiveHandoffErrors, ReceiveHandoffResponses, ReturnHandoffData, ReturnHandoffErrors, ReturnHandoffResponses } from './types.gen';
+import type { ConfirmReturnsData, ConfirmReturnsErrors, ConfirmReturnsResponses, GetMeData, GetMeErrors, GetMeResponses, IssueHandoffTokenData, IssueHandoffTokenErrors, IssueHandoffTokenResponses, IssueReturnTokenData, IssueReturnTokenErrors, IssueReturnTokenResponses, ListMyHandoffsData, ListMyHandoffsErrors, ListMyHandoffsResponses, ListMyOutstandingHandoffsData, ListMyOutstandingHandoffsErrors, ListMyOutstandingHandoffsResponses, ReceiveHandoffData, ReceiveHandoffErrors, ReceiveHandoffResponses, RequestReturnsData, RequestReturnsErrors, RequestReturnsResponses, ReturnHandoffData, ReturnHandoffErrors, ReturnHandoffResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -76,6 +76,38 @@ export const issueReturnToken = <ThrowOnError extends boolean = false>(options: 
 export const returnHandoff = <ThrowOnError extends boolean = false>(options: Options<ReturnHandoffData, ThrowOnError>): RequestResult<ReturnHandoffResponses, ReturnHandoffErrors, ThrowOnError> => (options.client ?? client).post<ReturnHandoffResponses, ReturnHandoffErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/returns',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * 対面でないときに、借りたものをまとめて返却の承認待ちにする（借りた側）
+ *
+ * 貸した人が違うものも一緒に送れる。1 件でも返せないもの（他人の記録、返却の必要がない、返却済み、承認待ち）があれば、どれも記録しない。
+ * 貸した側が /return-confirmations で承認すると返却済みになる。
+ *
+ */
+export const requestReturns = <ThrowOnError extends boolean = false>(options: Options<RequestReturnsData, ThrowOnError>): RequestResult<RequestReturnsResponses, RequestReturnsErrors, ThrowOnError> => (options.client ?? client).post<RequestReturnsResponses, RequestReturnsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/return-requests',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * 承認待ちの返却をまとめて承認し、返却済みにする（貸した側）
+ *
+ * 1 件でも承認できないもの（他人に貸したもの、承認待ちでない、返却済み）があれば、どれも記録しない。
+ */
+export const confirmReturns = <ThrowOnError extends boolean = false>(options: Options<ConfirmReturnsData, ThrowOnError>): RequestResult<ConfirmReturnsResponses, ConfirmReturnsErrors, ThrowOnError> => (options.client ?? client).post<ConfirmReturnsResponses, ConfirmReturnsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/return-confirmations',
     ...options,
     headers: {
         'Content-Type': 'application/json',

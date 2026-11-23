@@ -89,3 +89,54 @@ test("受け渡しから返却まで", async ({ page, playwright, baseURL }, tes
     await shot(page, testInfo, "09-history");
   });
 });
+
+// 対面でないとき：借りた側が選んでまとめて返却を送り、貸した側がまとめて承認する。
+test("対面でない返却をまとめて送る", async ({ page, playwright, baseURL }, testInfo) => {
+  const u = users(testInfo);
+  const satoApi = await apiAs(playwright, baseURL, u.sato);
+  const suzukiApi = await apiAs(playwright, baseURL, u.suzuki);
+  expect((await satoApi.get("/api/me")).ok()).toBe(true);
+  expect((await suzukiApi.get("/api/me")).ok()).toBe(true);
+
+  const due = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  for (const item of ["LANケーブル", "モバイルモニター", "HDMIアダプター"]) {
+    const issued = await satoApi.post("/api/handoff-tokens", { data: { item, qty: 1, dueDate: due } });
+    const res = await suzukiApi.post("/api/handoffs", { data: { token: (await issued.json()).token } });
+    expect(res.status()).toBe(201);
+  }
+
+  await test.step("suzuki：返すで 2 つ選ぶ", async () => {
+    await loginAs(page, u.suzuki);
+    await page.goto("/return");
+    await page.getByRole("checkbox", { name: /LANケーブル/ }).check();
+    await page.getByRole("checkbox", { name: /モバイルモニター/ }).check();
+    await expect(page.getByRole("button", { name: "選んだものの返却を送信" })).toBeVisible();
+    await shot(page, testInfo, "10-return-select");
+  });
+
+  await test.step("suzuki：まとめて送ると、承認待ちになる", async () => {
+    await page.getByRole("button", { name: "選んだものの返却を送信" }).click();
+    await expect(page.getByText("返却の承認待ち")).toHaveCount(2);
+    await expect(page.getByRole("checkbox")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "選んだものの返却を送信" })).toBeHidden();
+    await shot(page, testInfo, "11-return-requested");
+  });
+
+  await test.step("sato：待ちで、届いたものを選ぶ", async () => {
+    await loginAs(page, u.sato);
+    await page.goto("/waiting");
+    await expect(page.getByRole("checkbox")).toHaveCount(2);
+    await page.getByRole("checkbox", { name: /LANケーブル/ }).check();
+    await page.getByRole("checkbox", { name: /モバイルモニター/ }).check();
+    await shot(page, testInfo, "12-waiting-select");
+  });
+
+  await test.step("sato：まとめて承認すると、待ちから消える", async () => {
+    await page.getByRole("button", { name: "選んだものの返却を承認" }).click();
+    await expect(page.getByText("LANケーブル")).toBeHidden();
+    await expect(page.getByText("モバイルモニター")).toBeHidden();
+    await expect(page.getByText("HDMIアダプター")).toBeVisible();
+    await expect(page.getByRole("button", { name: "返却QRを読み取る" })).toBeVisible();
+    await shot(page, testInfo, "13-waiting-confirmed");
+  });
+});

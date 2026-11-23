@@ -160,6 +160,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
 
+  /return-requests:
+    post:
+      operationId: requestReturns
+      summary: 対面でないときに、借りたものをまとめて返却の承認待ちにする（借りた側）
+      description: |
+        貸した人が違うものも一緒に送れる。1 件でも返せないもの（他人の記録、返却の必要がない、返却済み、承認待ち）があれば、どれも記録しない。
+        貸した側が /return-confirmations で承認すると返却済みになる。
+      tags: [handoff]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandoffIdsRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Handoff"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: すでに返却済み、または承認待ちのものがある
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /return-confirmations:
+    post:
+      operationId: confirmReturns
+      summary: 承認待ちの返却をまとめて承認し、返却済みにする（貸した側）
+      description: 1 件でも承認できないもの（他人に貸したもの、承認待ちでない、返却済み）があれば、どれも記録しない。
+      tags: [handoff]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandoffIdsRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Handoff"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: すでに返却済み、または承認待ちでないものがある
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
   /me/outstanding-handoffs:
     get:
       operationId: listMyOutstandingHandoffs
@@ -278,6 +348,19 @@ components:
           type: string
           format: uuid
 
+    HandoffIdsRequest:
+      type: object
+      required: [handoffIds]
+      properties:
+        handoffIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
     ReturnHandoffRequest:
       type: object
       required: [token]
@@ -331,6 +414,10 @@ components:
           type: string
           format: date
           description: 返却期限。返却の必要がない受け渡しにはない
+        returnRequestedAt:
+          type: string
+          format: date-time
+          description: 対面でない返却を送った日時（貸した側の承認待ち）。送っていなければない
         returnedAt:
           type: string
           format: date-time

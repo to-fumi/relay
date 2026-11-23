@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { getMe, issueHandoffToken, issueReturnToken, listMyHandoffs, listMyOutstandingHandoffs, type Options, receiveHandoff, returnHandoff } from '../sdk.gen';
-import type { GetMeData, GetMeError, GetMeResponse, IssueHandoffTokenData, IssueHandoffTokenError, IssueHandoffTokenResponse, IssueReturnTokenData, IssueReturnTokenError, IssueReturnTokenResponse, ListMyHandoffsData, ListMyHandoffsError, ListMyHandoffsResponse, ListMyOutstandingHandoffsData, ListMyOutstandingHandoffsError, ListMyOutstandingHandoffsResponse, ReceiveHandoffData, ReceiveHandoffError, ReceiveHandoffResponse, ReturnHandoffData, ReturnHandoffError, ReturnHandoffResponse } from '../types.gen';
+import { confirmReturns, getMe, issueHandoffToken, issueReturnToken, listMyHandoffs, listMyOutstandingHandoffs, type Options, receiveHandoff, requestReturns, returnHandoff } from '../sdk.gen';
+import type { ConfirmReturnsData, ConfirmReturnsError, ConfirmReturnsResponse, GetMeData, GetMeError, GetMeResponse, IssueHandoffTokenData, IssueHandoffTokenError, IssueHandoffTokenResponse, IssueReturnTokenData, IssueReturnTokenError, IssueReturnTokenResponse, ListMyHandoffsData, ListMyHandoffsError, ListMyHandoffsResponse, ListMyOutstandingHandoffsData, ListMyOutstandingHandoffsError, ListMyOutstandingHandoffsResponse, ReceiveHandoffData, ReceiveHandoffError, ReceiveHandoffResponse, RequestReturnsData, RequestReturnsError, RequestReturnsResponse, ReturnHandoffData, ReturnHandoffError, ReturnHandoffResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -119,6 +119,46 @@ export const returnHandoffMutation = (options?: Partial<Options<ReturnHandoffDat
     const mutationOptions: UseMutationOptions<ReturnHandoffResponse, ReturnHandoffError, Options<ReturnHandoffData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await returnHandoff({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * 対面でないときに、借りたものをまとめて返却の承認待ちにする（借りた側）
+ *
+ * 貸した人が違うものも一緒に送れる。1 件でも返せないもの（他人の記録、返却の必要がない、返却済み、承認待ち）があれば、どれも記録しない。
+ * 貸した側が /return-confirmations で承認すると返却済みになる。
+ *
+ */
+export const requestReturnsMutation = (options?: Partial<Options<RequestReturnsData>>): UseMutationOptions<RequestReturnsResponse, RequestReturnsError, Options<RequestReturnsData>> => {
+    const mutationOptions: UseMutationOptions<RequestReturnsResponse, RequestReturnsError, Options<RequestReturnsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await requestReturns({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * 承認待ちの返却をまとめて承認し、返却済みにする（貸した側）
+ *
+ * 1 件でも承認できないもの（他人に貸したもの、承認待ちでない、返却済み）があれば、どれも記録しない。
+ */
+export const confirmReturnsMutation = (options?: Partial<Options<ConfirmReturnsData>>): UseMutationOptions<ConfirmReturnsResponse, ConfirmReturnsError, Options<ConfirmReturnsData>> => {
+    const mutationOptions: UseMutationOptions<ConfirmReturnsResponse, ConfirmReturnsError, Options<ConfirmReturnsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await confirmReturns({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

@@ -4,12 +4,19 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"time"
 
 	"relay/internal/handoff/domain"
 
 	"github.com/google/uuid"
 )
+
+// MaxBatch はまとめて返却・承認できる件数の上限。
+const MaxBatch = 100
+
+// ErrInvalidSelection は、まとめて扱う受け渡しの選び方（0 件、多すぎる）が正しくないことを表す。
+var ErrInvalidSelection = errors.New("select 1 to 100 handoffs")
 
 type Service struct {
 	repo   domain.Repository
@@ -34,15 +41,16 @@ type IssuedToken struct {
 
 // HandoffView は表示用の受け渡し記録。
 type HandoffView struct {
-	ID         uuid.UUID
-	JTI        string
-	From       UserRef
-	To         UserRef
-	Item       string
-	Qty        int
-	CreatedAt  time.Time
-	DueDate    *time.Time // 返却期限（UTC の 0 時）。なければ nil
-	ReturnedAt *time.Time // 返却された日時。まだなら nil
+	ID                uuid.UUID
+	JTI               string
+	From              UserRef
+	To                UserRef
+	Item              string
+	Qty               int
+	CreatedAt         time.Time
+	DueDate           *time.Time // 返却期限（UTC の 0 時）。なければ nil
+	ReturnRequestedAt *time.Time // 対面でない返却を送った日時。送っていなければ nil
+	ReturnedAt        *time.Time // 返却された日時。まだなら nil
 }
 
 type UserRef struct {
@@ -145,6 +153,58 @@ func (s *Service) Return(ctx context.Context, lender uuid.UUID, token string) (H
 	return s.toView(ctx, h)
 }
 
+// RequestReturns は借りた側（borrower）が、対面でない返却をまとめて送る。貸した側の承認待ちになる。
+// 1 件でも送れないものがあれば、どれも記録しない。
+func (s *Service) RequestReturns(ctx context.Context, borrower uuid.UUID, ids []uuid.UUID) ([]HandoffView, error) {
+	now := s.now()
+	return s.updateAll(ctx, ids,
+		func(h *domain.Handoff) error { return h.RequestReturn(borrower, now) },
+		s.repo.SaveReturnRequests,
+	)
+}
+
+// ConfirmReturns は貸した側（lender）が、送られた返却をまとめて承認し、返却済みにする。
+// 1 件でも承認できないものがあれば、どれも記録しない。
+func (s *Service) ConfirmReturns(ctx context.Context, lender uuid.UUID, ids []uuid.UUID) ([]HandoffView, error) {
+	now := s.now()
+	return s.updateAll(ctx, ids,
+		func(h *domain.Handoff) error { return h.ConfirmReturn(lender, now) },
+		s.repo.SaveConfirmedReturns,
+	)
+}
+
+func (s *Service) updateAll(ctx context.Context, ids []uuid.UUID, change func(*domain.Handoff) error, save func(context.Context, []domain.Handoff) error) ([]HandoffView, error) {
+	ids = uniqueIDs(ids)
+	if len(ids) == 0 || len(ids) > MaxBatch {
+		return nil, ErrInvalidSelection
+	}
+	hs, err := s.repo.GetMany(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range hs {
+		if err := change(&hs[i]); err != nil {
+			return nil, err
+		}
+	}
+	if err := save(ctx, hs); err != nil {
+		return nil, err
+	}
+	return s.toViews(ctx, hs)
+}
+
+func uniqueIDs(ids []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	out := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // ListMine は user が渡した、または受け取った記録を新しい順に返す。
 func (s *Service) ListMine(ctx context.Context, user uuid.UUID, limit int) ([]HandoffView, error) {
 	hs, err := s.repo.ListByUser(ctx, user, limit)
@@ -188,14 +248,15 @@ func (s *Service) toViews(ctx context.Context, hs []domain.Handoff) ([]HandoffVi
 	views := make([]HandoffView, len(hs))
 	for i, h := range hs {
 		v := HandoffView{
-			ID:         h.ID(),
-			JTI:        h.JTI(),
-			From:       UserRef{ID: h.From(), DisplayName: names[h.From()]},
-			To:         UserRef{ID: h.To(), DisplayName: names[h.To()]},
-			Item:       string(h.Item()),
-			Qty:        int(h.Qty()),
-			CreatedAt:  h.CreatedAt(),
-			ReturnedAt: h.ReturnedAt(),
+			ID:                h.ID(),
+			JTI:               h.JTI(),
+			From:              UserRef{ID: h.From(), DisplayName: names[h.From()]},
+			To:                UserRef{ID: h.To(), DisplayName: names[h.To()]},
+			Item:              string(h.Item()),
+			Qty:               int(h.Qty()),
+			CreatedAt:         h.CreatedAt(),
+			ReturnedAt:        h.ReturnedAt(),
+			ReturnRequestedAt: h.ReturnRequestedAt(),
 		}
 		if d := h.DueDate(); d != nil {
 			t := d.Time()
