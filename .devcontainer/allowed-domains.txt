@@ -9,6 +9,11 @@ storage.googleapis.com
 sum.golang.org
 vuln.go.dev
 
+# Google でのログイン（AUTH_MODE=oidc で、バックエンドが discovery・公開鍵・トークンを取りに行く）
+accounts.google.com
+oauth2.googleapis.com
+www.googleapis.com
+
 # Claude Code（Remote Control を含む）
 api.anthropic.com
 claude.ai

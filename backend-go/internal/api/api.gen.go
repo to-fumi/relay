@@ -18,6 +18,11 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// DevLoginRequest defines model for DevLoginRequest.
+type DevLoginRequest struct {
+	Email openapi_types.Email `json:"email"`
+}
+
 // Handoff defines model for Handoff.
 type Handoff struct {
 	CreatedAt time.Time `json:"createdAt"`

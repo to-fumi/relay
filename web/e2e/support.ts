@@ -12,11 +12,10 @@ export function users(testInfo: TestInfo) {
   return { sato: `sato@${run}.example`, suzuki: `suzuki@${run}.example` };
 }
 
-/** 開発用ログイン（AUTH_MODE=dev）で、次に開くページから email のユーザーにする */
+/** 開発用ログイン（AUTH_MODE=dev）で、email のユーザーとしてセッションの Cookie を入れる（ページを開く前に呼ぶ） */
 export async function loginAs(page: Page, email: string): Promise<void> {
-  await page.addInitScript((e) => {
-    sessionStorage.setItem("relay.devSession", JSON.stringify({ email: e, expiresAt: Date.now() + 60 * 60 * 1000 }));
-  }, email);
+  const res = await page.request.post("/api/auth/dev-login", { data: { email } });
+  if (!res.ok()) throw new Error(`dev-login failed: ${res.status()}`);
 }
 
 /** 画面を使わずに、email のユーザーとして API を呼ぶ（相手側の操作に使う） */
@@ -25,7 +24,10 @@ export async function apiAs(
   baseURL: string | undefined,
   email: string,
 ): Promise<APIRequestContext> {
-  return playwright.request.newContext({ baseURL, extraHTTPHeaders: { Authorization: `Bearer dev:${email}` } });
+  const ctx = await playwright.request.newContext({ baseURL });
+  const res = await ctx.post("/api/auth/dev-login", { data: { email } });
+  if (!res.ok()) throw new Error(`dev-login failed: ${res.status()}`);
+  return ctx;
 }
 
 /** QR コード（svg の title で探す） */

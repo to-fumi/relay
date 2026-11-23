@@ -10,8 +10,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// Identity は認証済みの利用者の情報（platform/auth の Principal から変換して渡す）。
+// Identity はログインで確かめた利用者の情報（platform/auth の Principal から変換して渡す）。
 type Identity struct {
+	Issuer  string
 	Subject string
 	Email   string
 	Name    string
@@ -30,16 +31,18 @@ func NewService(repo domain.Repository, adminEmails []string) *Service {
 	return &Service{repo: repo, adminEmails: admins}
 }
 
-// EnsureUser はログインした利用者をユーザーとして登録（または更新）する。
+// EnsureUser はログインした利用者をユーザーとして登録（初回）または更新する。
+// 名前がなければ、メールアドレスの @ より前を名前にする。
 func (s *Service) EnsureUser(ctx context.Context, id Identity) (domain.User, error) {
 	_, isAdmin := s.adminEmails[strings.ToLower(id.Email)]
-	name := id.Name
+	name := strings.TrimSpace(id.Name)
 	if name == "" {
-		name = id.Email
+		name, _, _ = strings.Cut(id.Email, "@")
 	}
-	return s.repo.UpsertByEntraOID(ctx, domain.User{
+	return s.repo.UpsertBySubject(ctx, domain.User{
 		ID:          uuid.New(),
-		EntraOID:    id.Subject,
+		Issuer:      id.Issuer,
+		Subject:     id.Subject,
 		DisplayName: name,
 		Email:       id.Email,
 		IsAdmin:     isAdmin,

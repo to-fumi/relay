@@ -1,13 +1,31 @@
 import { expect, test } from "@playwright/test";
 import { apiAs, loginAs, qr, shot, users } from "./support";
 
+// ログインしていなければログインの画面を出し、ログインすると受け渡しの画面に入る。
+test("ログイン", async ({ page }, testInfo) => {
+  const u = users(testInfo);
+  await page.goto("/");
+  await expect(page.getByLabel("メールアドレス")).toBeVisible();
+  await shot(page, testInfo, "00-login");
+
+  await page.getByLabel("メールアドレス").fill(u.sato);
+  await page.getByRole("button", { name: "ログイン" }).click();
+  await expect(page.getByText("sato", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "QRを発行" })).toBeVisible();
+
+  // セッションの Cookie は HttpOnly で、画面の JavaScript からは読めない
+  const cookies = await page.context().cookies();
+  expect(cookies.find((c) => c.name === "relay_session")?.httpOnly).toBe(true);
+  expect(await page.evaluate(() => document.cookie)).not.toContain("relay_session");
+});
+
 // 受け渡しから返却までを、2 人（sato と suzuki）で一通り行う。
 // 画面で操作するのは 1 人ずつで、相手の QR の読み取りは API で代わりにする（カメラで QR は読めないため）。
 test("受け渡しから返却まで", async ({ page, playwright, baseURL }, testInfo) => {
   const u = users(testInfo);
   const satoApi = await apiAs(playwright, baseURL, u.sato);
   const suzukiApi = await apiAs(playwright, baseURL, u.suzuki);
-  // ユーザーは初回の /me で登録される
+  // ユーザーはログイン（dev-login）のときに登録される
   expect((await satoApi.get("/api/me")).ok()).toBe(true);
   expect((await suzukiApi.get("/api/me")).ok()).toBe(true);
 

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ConfirmReturnsData, ConfirmReturnsErrors, ConfirmReturnsResponses, GetMeData, GetMeErrors, GetMeResponses, IssueHandoffTokenData, IssueHandoffTokenErrors, IssueHandoffTokenResponses, IssueReturnTokenData, IssueReturnTokenErrors, IssueReturnTokenResponses, ListMyHandoffsData, ListMyHandoffsErrors, ListMyHandoffsResponses, ListMyOutstandingHandoffsData, ListMyOutstandingHandoffsErrors, ListMyOutstandingHandoffsResponses, ReceiveHandoffData, ReceiveHandoffErrors, ReceiveHandoffResponses, RequestReturnsData, RequestReturnsErrors, RequestReturnsResponses, ReturnHandoffData, ReturnHandoffErrors, ReturnHandoffResponses } from './types.gen';
+import type { ConfirmReturnsData, ConfirmReturnsErrors, ConfirmReturnsResponses, DevLoginData, DevLoginErrors, DevLoginResponses, GetMeData, GetMeErrors, GetMeResponses, IssueHandoffTokenData, IssueHandoffTokenErrors, IssueHandoffTokenResponses, IssueReturnTokenData, IssueReturnTokenErrors, IssueReturnTokenResponses, ListMyHandoffsData, ListMyHandoffsErrors, ListMyHandoffsResponses, ListMyOutstandingHandoffsData, ListMyOutstandingHandoffsErrors, ListMyOutstandingHandoffsResponses, LoginCallbackData, LoginCallbackErrors, LoginData, LoginErrors, ReceiveHandoffData, ReceiveHandoffErrors, ReceiveHandoffResponses, RequestReturnsData, RequestReturnsErrors, RequestReturnsResponses, ReturnHandoffData, ReturnHandoffErrors, ReturnHandoffResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -19,10 +19,45 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 };
 
 /**
+ * OIDC（Google など）のログイン画面へリダイレクトする
+ *
+ * state・nonce・PKCE を短い Cookie に入れてから、プロバイダーへ移る。AUTH_MODE=oidc のときだけ使える
+ */
+export const login = <ThrowOnError extends boolean = false>(options?: Options<LoginData, ThrowOnError>): RequestResult<unknown, LoginErrors, ThrowOnError> => (options?.client ?? client).get<unknown, LoginErrors, ThrowOnError>({ url: '/auth/login', ...options });
+
+/**
+ * プロバイダーから戻ってきたときに、ID トークンを検証してセッションを作る
+ *
+ * ID トークンの署名・iss・aud・exp・nonce と email_verified を検証し、ALLOWED_EMAILS で使える人かを確かめる。
+ * 初回はユーザーを登録する。セッションの ID は Cookie（relay_session、HttpOnly、SameSite=Lax）に入れる。
+ * 成功したら / へ、失敗したら /?login=failed（使えない人なら /?login=forbidden）へ戻す。
+ *
+ */
+export const loginCallback = <ThrowOnError extends boolean = false>(options?: Options<LoginCallbackData, ThrowOnError>): RequestResult<unknown, LoginCallbackErrors, ThrowOnError> => (options?.client ?? client).get<unknown, LoginCallbackErrors, ThrowOnError>({ url: '/auth/callback', ...options });
+
+/**
+ * 開発用ログイン。メールアドレスだけで、その人としてセッションを作る
+ *
+ * AUTH_MODE=dev のときだけ使える。セッションの ID は Cookie（relay_session）に入れる
+ */
+export const devLogin = <ThrowOnError extends boolean = false>(options: Options<DevLoginData, ThrowOnError>): RequestResult<DevLoginResponses, DevLoginErrors, ThrowOnError> => (options.client ?? client).post<DevLoginResponses, DevLoginErrors, ThrowOnError>({
+    url: '/auth/dev-login',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * ログイン中のユーザーを取得する（初回は自動で登録する）
  */
 export const getMe = <ThrowOnError extends boolean = false>(options?: Options<GetMeData, ThrowOnError>): RequestResult<GetMeResponses, GetMeErrors, ThrowOnError> => (options?.client ?? client).get<GetMeResponses, GetMeErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
+    security: [{
+            in: 'cookie',
+            name: 'relay_session',
+            type: 'apiKey'
+        }],
     url: '/me',
     ...options
 });
@@ -31,7 +66,11 @@ export const getMe = <ThrowOnError extends boolean = false>(options?: Options<Ge
  * 受け渡し用のQRトークンを発行する（渡す側）
  */
 export const issueHandoffToken = <ThrowOnError extends boolean = false>(options: Options<IssueHandoffTokenData, ThrowOnError>): RequestResult<IssueHandoffTokenResponses, IssueHandoffTokenErrors, ThrowOnError> => (options.client ?? client).post<IssueHandoffTokenResponses, IssueHandoffTokenErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
+    security: [{
+            in: 'cookie',
+            name: 'relay_session',
+            type: 'apiKey'
+        }],
     url: '/handoff-tokens',
     ...options,
     headers: {
@@ -46,7 +85,11 @@ export const issueHandoffToken = <ThrowOnError extends boolean = false>(options:
  * 返却用のQRトークンを渡したときは、type が `urn:relay:problem:return-token` の 400 を返す（返却は /returns で記録する）。
  */
 export const receiveHandoff = <ThrowOnError extends boolean = false>(options: Options<ReceiveHandoffData, ThrowOnError>): RequestResult<ReceiveHandoffResponses, ReceiveHandoffErrors, ThrowOnError> => (options.client ?? client).post<ReceiveHandoffResponses, ReceiveHandoffErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
+    security: [{
+            in: 'cookie',
+            name: 'relay_session',
+            type: 'apiKey'
+        }],
     url: '/handoffs',
     ...options,
     headers: {
@@ -61,7 +104,11 @@ export const receiveHandoff = <ThrowOnError extends boolean = false>(options: Op
  * 返却期限付きで受け取った記録について、返却用のQRトークンを発行する。貸した側がこれを読み取ると返却済みになる。
  */
 export const issueReturnToken = <ThrowOnError extends boolean = false>(options: Options<IssueReturnTokenData, ThrowOnError>): RequestResult<IssueReturnTokenResponses, IssueReturnTokenErrors, ThrowOnError> => (options.client ?? client).post<IssueReturnTokenResponses, IssueReturnTokenErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
+    security: [{
+            in: 'cookie',
+            name: 'relay_session',
+            type: 'apiKey'
+        }],
     url: '/return-tokens',
     ...options,
     headers: {
@@ -74,7 +121,11 @@ export const issueReturnToken = <ThrowOnError extends boolean = false>(options: 
  * 返却用のQRトークンを読み取り、返却を記録する（貸した側）
  */
 export const returnHandoff = <ThrowOnError extends boolean = false>(options: Options<ReturnHandoffData, ThrowOnError>): RequestResult<ReturnHandoffResponses, ReturnHandoffErrors, ThrowOnError> => (options.client ?? client).post<ReturnHandoffResponses, ReturnHandoffErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
+    security: [{
+            in: 'cookie',
+            name: 'relay_session',
+            type: 'apiKey'
+        }],
     url: '/returns',
     ...options,
     headers: {
@@ -91,7 +142,11 @@ export const returnHandoff = <ThrowOnError extends boolean = false>(options: Opt
  *
  */
 export const requestReturns = <ThrowOnError extends boolean = false>(options: Options<RequestReturnsData, ThrowOnError>): RequestResult<RequestReturnsResponses, RequestReturnsErrors, ThrowOnError> => (options.client ?? client).post<RequestReturnsResponses, RequestReturnsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
+    security: [{
+            in: 'cookie',
+            name: 'relay_session',
+            type: 'apiKey'
+        }],
     url: '/return-requests',
     ...options,
     headers: {
@@ -106,7 +161,11 @@ export const requestReturns = <ThrowOnError extends boolean = false>(options: Op
  * 1 件でも承認できないもの（他人に貸したもの、承認待ちでない、返却済み）があれば、どれも記録しない。
  */
 export const confirmReturns = <ThrowOnError extends boolean = false>(options: Options<ConfirmReturnsData, ThrowOnError>): RequestResult<ConfirmReturnsResponses, ConfirmReturnsErrors, ThrowOnError> => (options.client ?? client).post<ConfirmReturnsResponses, ConfirmReturnsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
+    security: [{
+            in: 'cookie',
+            name: 'relay_session',
+            type: 'apiKey'
+        }],
     url: '/return-confirmations',
     ...options,
     headers: {
@@ -119,7 +178,11 @@ export const confirmReturns = <ThrowOnError extends boolean = false>(options: Op
  * 返却期限付きでまだ返却されていない記録（貸している・借りている）を、期限が近い順に取得する
  */
 export const listMyOutstandingHandoffs = <ThrowOnError extends boolean = false>(options?: Options<ListMyOutstandingHandoffsData, ThrowOnError>): RequestResult<ListMyOutstandingHandoffsResponses, ListMyOutstandingHandoffsErrors, ThrowOnError> => (options?.client ?? client).get<ListMyOutstandingHandoffsResponses, ListMyOutstandingHandoffsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
+    security: [{
+            in: 'cookie',
+            name: 'relay_session',
+            type: 'apiKey'
+        }],
     url: '/me/outstanding-handoffs',
     ...options
 });
@@ -128,7 +191,11 @@ export const listMyOutstandingHandoffs = <ThrowOnError extends boolean = false>(
  * 自分が渡した・受け取った記録を新しい順に取得する
  */
 export const listMyHandoffs = <ThrowOnError extends boolean = false>(options?: Options<ListMyHandoffsData, ThrowOnError>): RequestResult<ListMyHandoffsResponses, ListMyHandoffsErrors, ThrowOnError> => (options?.client ?? client).get<ListMyHandoffsResponses, ListMyHandoffsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
+    security: [{
+            in: 'cookie',
+            name: 'relay_session',
+            type: 'apiKey'
+        }],
     url: '/me/handoffs',
     ...options
 });

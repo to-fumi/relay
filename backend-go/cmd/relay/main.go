@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +26,8 @@ import (
 	identityhttp "relay/internal/identity/adapter/http"
 	identitypg "relay/internal/identity/adapter/postgres"
 	identityapp "relay/internal/identity/application"
+
+	"github.com/google/uuid"
 )
 
 func main() {
@@ -54,13 +57,15 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	verifier, err := newVerifier(ctx, cfg)
+	// identity
+	identitySvc := identityapp.NewService(identitypg.NewRepository(pool), cfg.AdminEmails)
+
+	// ログインとセッション（ユーザーの登録には identity のサービスを注入する）
+	sessions := auth.NewPostgresSessionStore(pool)
+	authHandlers, err := newAuthHandlers(ctx, cfg, sessions, userResolver{identitySvc})
 	if err != nil {
 		return err
 	}
-
-	// identity
-	identitySvc := identityapp.NewService(identitypg.NewRepository(pool), cfg.AdminEmails)
 
 	// handoff（UserDirectory には identity のサービスを注入する）
 	handoffSvc := handoffapp.NewService(
@@ -97,18 +102,20 @@ func run(ctx context.Context) error {
 	)
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/", chain(apiHandler,
-		auth.Middleware(verifier),
-		identityhttp.UserMiddleware(identitySvc),
-	))
+	authHandlers.Register(mux) // /api/auth/*（セッションがなくても呼べる）
+	mux.Handle("/api/", auth.Middleware(sessions, time.Now)(apiHandler))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	if cfg.StaticDir != "" {
 		mux.Handle("/", httpx.SPAHandler(cfg.StaticDir))
 	}
 
+	// Cookie で認証するので、ほかのサイトから書き込みの API を呼ばせない（CSRF）。
+	// ブラウザが送る Sec-Fetch-Site（なければ Origin）を見て、別のサイトからの POST などを 403 にする
+	csrf := http.NewCrossOriginProtection()
+
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           mux,
+		Handler:           csrf.Handler(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -131,18 +138,37 @@ func run(ctx context.Context) error {
 	}
 }
 
-func newVerifier(ctx context.Context, cfg config.Config) (auth.Verifier, error) {
-	if cfg.AuthMode == config.AuthModeEntra {
-		return auth.NewEntraVerifier(ctx, cfg.EntraTenantID, cfg.EntraAudience)
+func newAuthHandlers(ctx context.Context, cfg config.Config, sessions auth.SessionStore, users auth.UserResolver) (*auth.Handlers, error) {
+	hc := auth.HandlersConfig{
+		Store:   sessions,
+		Users:   users,
+		Allowed: auth.NewAllowlist(cfg.AllowedEmails),
+		TTL:     cfg.SessionTTL,
+		Now:     time.Now,
+	}
+	if cfg.AuthMode == config.AuthModeOIDC {
+		provider, err := auth.NewOIDC(ctx, auth.OIDCConfig{
+			Issuer:       cfg.OIDCIssuer,
+			ClientID:     cfg.OIDCClientID,
+			ClientSecret: cfg.OIDCClientSecret,
+			RedirectURL:  cfg.OIDCRedirectURL,
+		})
+		if err != nil {
+			return nil, err
+		}
+		hc.Provider = provider
+		hc.Secure = strings.HasPrefix(cfg.OIDCRedirectURL, "https://")
+		return auth.NewHandlers(hc), nil
 	}
 	slog.Warn("AUTH_MODE=dev: using development login; do not use in production")
-	return auth.DevVerifier{}, nil
+	hc.Dev = true
+	return auth.NewHandlers(hc), nil
 }
 
-// chain は middlewares を外側から順に適用する。
-func chain(h http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		h = middlewares[i](h)
-	}
-	return h
+// userResolver は identity のサービスを auth.UserResolver に合わせる。
+type userResolver struct{ svc *identityapp.Service }
+
+func (r userResolver) ResolveUser(ctx context.Context, p auth.Principal) (uuid.UUID, error) {
+	u, err := r.svc.EnsureUser(ctx, identityapp.Identity{Issuer: p.Issuer, Subject: p.Subject, Email: p.Email, Name: p.Name})
+	return u.ID, err
 }

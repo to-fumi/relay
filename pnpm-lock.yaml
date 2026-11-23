@@ -190,12 +190,6 @@ importers:
 
   web:
     dependencies:
-      '@azure/msal-browser':
-        specifier: 5.30.0
-        version: 5.30.0
-      '@azure/msal-react':
-        specifier: 5.8.3
-        version: 5.8.3(@azure/msal-browser@5.30.0)(react@19.3.1)
       '@tanstack/react-query':
         specifier: 5.108.2
         version: 5.108.2(@types/react@19.3.0)(react@19.3.1)
@@ -262,21 +256,6 @@ importers:
         version: 8.3.8(@types/node@24.19.2)(jiti@2.7.0)
 
 packages:
-
-  '@azure/msal-browser@5.30.0':
-    resolution: {integrity: sha512-o/ADxWxEFcVrE65a7ssOGuxnivq8lcy+2hSGlOOwtn0gGd6iiwl3q8/BMVRorYE81UB/r4B+8WGEUxWnqP7ryA==}
-    engines: {node: '>=0.8.0'}
-
-  '@azure/msal-common@16.17.0':
-    resolution: {integrity: sha512-rNvtEm7Axzj18neIk0C8kjr1ZXbJsHkWDqGedCfOiLVBjSCxWBcbJ26/I7g9owoeGKUoyrOgs73cIk7WxLd9qA==}
-    engines: {node: '>=0.8.0'}
-
-  '@azure/msal-react@5.8.3':
-    resolution: {integrity: sha512-qaq6e7k004bm3p2t8PQmAQXNMDmkbhN50iaeBAfY9pye0OubUn97K/AhX2MPLBUu8gnlSCnFRMy3LyO41hMswQ==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      '@azure/msal-browser': ^5.30.0
-      react: ^16.8.0 || ^17 || ^18 || ^19.2.1
 
   '@biomejs/biome@2.6.8':
     resolution: {integrity: sha512-kqZUFvX6/aYQOmzfRN5ANcfNS9wLH4aHLWWP/dQKyhRZVoA6rdWszA7DGugFcxPbMiznUyVYyukVl+ExZN4PQA==}
@@ -1522,17 +1501,6 @@ packages:
       '@types/emscripten': '>=1.39.6'
 
 snapshots:
-
-  '@azure/msal-browser@5.30.0':
-    dependencies:
-      '@azure/msal-common': 16.17.0
-
-  '@azure/msal-common@16.17.0': {}
-
-  '@azure/msal-react@5.8.3(@azure/msal-browser@5.30.0)(react@19.3.1)':
-    dependencies:
-      '@azure/msal-browser': 5.30.0
-      react: 19.3.1
 
   '@biomejs/biome@2.6.8':
     optionalDependencies:
