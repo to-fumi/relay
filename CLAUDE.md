@@ -14,6 +14,9 @@
 
 - 返却期限は日付のみで、その日の終わりまで。発行のときに今日（日本時間）以降であることを確かめる
 - 返却もQRで行う：借りた側（to）が返却タブの「返す」で返却QRを発行する（`POST /return-tokens`）→ 貸した側（from）が返却タブの「待ち」の「読取」で読み取る（`POST /returns`）→ `returned_at` を記録する
+- 対面でないときは、まとめて返却する：借りた側が「返す」で品目を選んで送る（`POST /return-requests`、`return_requested_at` を記録する）→ 貸した側が「待ち」で届いたものを選んで承認する（`POST /return-confirmations`、`returned_at` を記録する）
+  - 貸した人が違うものも一緒に送れる。1 件でも送れない・承認できないものがあれば、全体を失敗にする。一部の数量だけ返すことはできない
+  - 承認待ちのあいだも、返却QRで返せる
 - 間違えて「受け取る」で返却QRを読んだときも記録できるようにする：API が type `urn:relay:problem:return-token` の 400 を返すので、同じトークンで `POST /returns` を呼び直す
 
 - QRの中身はサーバーが署名した短いトークン（`handoff/adapter/token`）。トークンはどこにも保存しない
@@ -42,10 +45,10 @@
 users        id, entra_oid(unique), display_name, email, is_admin, created_at
 groups       id, name
 user_groups  user_id, group_id
-handoffs     id, jti(unique), from_user, to_user, item(text), qty, created_at, due_date(date, null), returned_at(null)
+handoffs     id, jti(unique), from_user, to_user, item(text), qty, created_at, due_date(date, null), return_requested_at(null), returned_at(null)
 ```
 
-`returned_at` は `due_date` があるときだけ入る。
+`return_requested_at`（対面でない返却を送った日時）と `returned_at` は `due_date` があるときだけ入る。
 
 グループごとの集計は、今の所属で行う。
 
@@ -123,7 +126,7 @@ web/src/
   - 日時は `shared/lib` の `formatDateTime` などで ja-JP 形式にする
   - 「送る」以外の画面は `React.lazy` で遅延読み込みする
   - 下部タブは「⇄ 受け渡し／↩ 返却／履歴」。タブの中は上の切り替えで分ける（受け渡しは「送る／受け取る」、返却は「返す／待ち」。`app/HandoffLayout`、`app/ReturnLayout`）
-  - 画面の主な操作（QR を発行、返却QRを読み取る、続けて読み取る）は、右下に浮かせたアイコンだけの丸いボタン（`shared/ui` の `Fab`）にする。「受け取る」はカメラがすぐ動くので、読み取り中のボタンは置かない。送るの入力欄で Enter を押しても発行しない（品目 → 数量へ移るだけ。日本語の変換確定の Enter はそのまま通す）
+  - 画面の主な操作（QR を発行、返却QRを読み取る、続けて読み取る、選んだものの返却を送信・承認）は、右下に浮かせたアイコンだけの丸いボタン（`shared/ui` の `Fab`）にする。「受け取る」はカメラがすぐ動くので、読み取り中のボタンは置かない。送るの入力欄で Enter を押しても発行しない（品目 → 数量へ移るだけ。日本語の変換確定の Enter はそのまま通す）
   - 1 画面の機能は少ないので、余白は広めにとる（カードは `p-6`、見出しの下は `mb-8`）。入力は中身に合った大きさにする（例：数量は右寄せの小さなステッパー）
 - **Backend**：Go 1.27（`go.mod` の `toolchain` で patch バージョンまで固定する。標準ライブラリの net/http、oapi-codegen の strict-server、pgx、goose、golang-jwt）、PostgreSQL 18
 - **Node**：24（`.node-version`）、pnpm（`packageManager` で固定する）

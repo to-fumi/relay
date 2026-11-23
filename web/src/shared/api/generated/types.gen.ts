@@ -29,6 +29,10 @@ export type IssueReturnTokenRequest = {
     handoffId: string;
 };
 
+export type HandoffIdsRequest = {
+    handoffIds: Array<string>;
+};
+
 export type ReturnHandoffRequest = {
     token: string;
 };
@@ -64,6 +68,10 @@ export type Handoff = {
      * 返却期限。返却の必要がない受け渡しにはない
      */
     dueDate?: string;
+    /**
+     * 対面でない返却を送った日時（貸した側の承認待ち）。送っていなければない
+     */
+    returnRequestedAt?: string;
     /**
      * 返却された日時。まだ返却されていなければない
      */
@@ -248,6 +256,80 @@ export type ReturnHandoffResponses = {
 };
 
 export type ReturnHandoffResponse = ReturnHandoffResponses[keyof ReturnHandoffResponses];
+
+export type RequestReturnsData = {
+    body: HandoffIdsRequest;
+    path?: never;
+    query?: never;
+    url: '/return-requests';
+};
+
+export type RequestReturnsErrors = {
+    /**
+     * 入力またはトークンが不正、もしくは期限切れ
+     */
+    400: Problem;
+    /**
+     * 認証されていない
+     */
+    401: Problem;
+    /**
+     * 記録が見つからない
+     */
+    404: Problem;
+    /**
+     * すでに返却済み、または承認待ちのものがある
+     */
+    409: Problem;
+};
+
+export type RequestReturnsError = RequestReturnsErrors[keyof RequestReturnsErrors];
+
+export type RequestReturnsResponses = {
+    /**
+     * OK
+     */
+    200: Array<Handoff>;
+};
+
+export type RequestReturnsResponse = RequestReturnsResponses[keyof RequestReturnsResponses];
+
+export type ConfirmReturnsData = {
+    body: HandoffIdsRequest;
+    path?: never;
+    query?: never;
+    url: '/return-confirmations';
+};
+
+export type ConfirmReturnsErrors = {
+    /**
+     * 入力またはトークンが不正、もしくは期限切れ
+     */
+    400: Problem;
+    /**
+     * 認証されていない
+     */
+    401: Problem;
+    /**
+     * 記録が見つからない
+     */
+    404: Problem;
+    /**
+     * すでに返却済み、または承認待ちでないものがある
+     */
+    409: Problem;
+};
+
+export type ConfirmReturnsError = ConfirmReturnsErrors[keyof ConfirmReturnsErrors];
+
+export type ConfirmReturnsResponses = {
+    /**
+     * OK
+     */
+    200: Array<Handoff>;
+};
+
+export type ConfirmReturnsResponse = ConfirmReturnsResponses[keyof ConfirmReturnsResponses];
 
 export type ListMyOutstandingHandoffsData = {
     body?: never;

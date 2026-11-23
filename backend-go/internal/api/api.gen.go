@@ -32,9 +32,17 @@ type Handoff struct {
 	Jti string `json:"jti"`
 	Qty int    `json:"qty"`
 
+	// ReturnRequestedAt 対面でない返却を送った日時（貸した側の承認待ち）。送っていなければない
+	ReturnRequestedAt *time.Time `json:"returnRequestedAt,omitempty"`
+
 	// ReturnedAt 返却された日時。まだ返却されていなければない
 	ReturnedAt *time.Time  `json:"returnedAt,omitempty"`
 	To         UserSummary `json:"to"`
+}
+
+// HandoffIdsRequest defines model for HandoffIdsRequest.
+type HandoffIdsRequest struct {
+	HandoffIds []openapi_types.UUID `json:"handoffIds"`
 }
 
 // HandoffToken defines model for HandoffToken.
@@ -113,6 +121,12 @@ type IssueHandoffTokenJSONRequestBody = IssueHandoffTokenRequest
 // ReceiveHandoffJSONRequestBody defines body for ReceiveHandoff for application/json ContentType.
 type ReceiveHandoffJSONRequestBody = ReceiveHandoffRequest
 
+// ConfirmReturnsJSONRequestBody defines body for ConfirmReturns for application/json ContentType.
+type ConfirmReturnsJSONRequestBody = HandoffIdsRequest
+
+// RequestReturnsJSONRequestBody defines body for RequestReturns for application/json ContentType.
+type RequestReturnsJSONRequestBody = HandoffIdsRequest
+
 // IssueReturnTokenJSONRequestBody defines body for IssueReturnToken for application/json ContentType.
 type IssueReturnTokenJSONRequestBody = IssueReturnTokenRequest
 
@@ -136,6 +150,12 @@ type ServerInterface interface {
 	// ListMyOutstandingHandoffs 返却期限付きでまだ返却されていない記録（貸している・借りている）を、期限が近い順に取得する
 	// (GET /me/outstanding-handoffs)
 	ListMyOutstandingHandoffs(w http.ResponseWriter, r *http.Request)
+	// ConfirmReturns 承認待ちの返却をまとめて承認し、返却済みにする（貸した側）
+	// (POST /return-confirmations)
+	ConfirmReturns(w http.ResponseWriter, r *http.Request)
+	// RequestReturns 対面でないときに、借りたものをまとめて返却の承認待ちにする（借りた側）
+	// (POST /return-requests)
+	RequestReturns(w http.ResponseWriter, r *http.Request)
 	// IssueReturnToken 返却用のQRトークンを発行する（借りた側）
 	// (POST /return-tokens)
 	IssueReturnToken(w http.ResponseWriter, r *http.Request)
@@ -233,6 +253,34 @@ func (siw *ServerInterfaceWrapper) ListMyOutstandingHandoffs(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMyOutstandingHandoffs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmReturns operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmReturns(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmReturns(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RequestReturns operation middleware
+func (siw *ServerInterfaceWrapper) RequestReturns(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RequestReturns(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -395,6 +443,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/handoffs", wrapper.ReceiveHandoff)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/return-tokens", wrapper.IssueReturnToken)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/returns", wrapper.ReturnHandoff)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/return-requests", wrapper.RequestReturns)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/return-confirmations", wrapper.ConfirmReturns)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/outstanding-handoffs", wrapper.ListMyOutstandingHandoffs)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/handoffs", wrapper.ListMyHandoffs)
 
@@ -655,6 +705,174 @@ func (response ListMyOutstandingHandoffs401ApplicationProblemPlusJSONResponse) V
 	return err
 }
 
+type ConfirmReturnsRequestObject struct {
+	Body *ConfirmReturnsJSONRequestBody
+}
+
+type ConfirmReturnsResponseObject interface {
+	VisitConfirmReturnsResponse(w http.ResponseWriter) error
+}
+
+type ConfirmReturns200JSONResponse []Handoff
+
+func (response ConfirmReturns200JSONResponse) VisitConfirmReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmReturns400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmReturns400ApplicationProblemPlusJSONResponse) VisitConfirmReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmReturns401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmReturns401ApplicationProblemPlusJSONResponse) VisitConfirmReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmReturns404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmReturns404ApplicationProblemPlusJSONResponse) VisitConfirmReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmReturns409ApplicationProblemPlusJSONResponse Problem
+
+func (response ConfirmReturns409ApplicationProblemPlusJSONResponse) VisitConfirmReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestReturnsRequestObject struct {
+	Body *RequestReturnsJSONRequestBody
+}
+
+type RequestReturnsResponseObject interface {
+	VisitRequestReturnsResponse(w http.ResponseWriter) error
+}
+
+type RequestReturns200JSONResponse []Handoff
+
+func (response RequestReturns200JSONResponse) VisitRequestReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestReturns400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response RequestReturns400ApplicationProblemPlusJSONResponse) VisitRequestReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestReturns401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response RequestReturns401ApplicationProblemPlusJSONResponse) VisitRequestReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestReturns404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response RequestReturns404ApplicationProblemPlusJSONResponse) VisitRequestReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestReturns409ApplicationProblemPlusJSONResponse Problem
+
+func (response RequestReturns409ApplicationProblemPlusJSONResponse) VisitRequestReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type IssueReturnTokenRequestObject struct {
 	Body *IssueReturnTokenJSONRequestBody
 }
@@ -854,6 +1072,12 @@ type StrictServerInterface interface {
 	// ListMyOutstandingHandoffs 返却期限付きでまだ返却されていない記録（貸している・借りている）を、期限が近い順に取得する
 	// (GET /me/outstanding-handoffs)
 	ListMyOutstandingHandoffs(ctx context.Context, request ListMyOutstandingHandoffsRequestObject) (ListMyOutstandingHandoffsResponseObject, error)
+	// ConfirmReturns 承認待ちの返却をまとめて承認し、返却済みにする（貸した側）
+	// (POST /return-confirmations)
+	ConfirmReturns(ctx context.Context, request ConfirmReturnsRequestObject) (ConfirmReturnsResponseObject, error)
+	// RequestReturns 対面でないときに、借りたものをまとめて返却の承認待ちにする（借りた側）
+	// (POST /return-requests)
+	RequestReturns(ctx context.Context, request RequestReturnsRequestObject) (RequestReturnsResponseObject, error)
 	// IssueReturnToken 返却用のQRトークンを発行する（借りた側）
 	// (POST /return-tokens)
 	IssueReturnToken(ctx context.Context, request IssueReturnTokenRequestObject) (IssueReturnTokenResponseObject, error)
@@ -1030,6 +1254,68 @@ func (sh *strictHandler) ListMyOutstandingHandoffs(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListMyOutstandingHandoffsResponseObject); ok {
 		if err := validResponse.VisitListMyOutstandingHandoffsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfirmReturns operation middleware
+func (sh *strictHandler) ConfirmReturns(w http.ResponseWriter, r *http.Request) {
+	var request ConfirmReturnsRequestObject
+
+	var body ConfirmReturnsJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfirmReturns(ctx, request.(ConfirmReturnsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfirmReturns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfirmReturnsResponseObject); ok {
+		if err := validResponse.VisitConfirmReturnsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RequestReturns operation middleware
+func (sh *strictHandler) RequestReturns(w http.ResponseWriter, r *http.Request) {
+	var request RequestReturnsRequestObject
+
+	var body RequestReturnsJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RequestReturns(ctx, request.(RequestReturnsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RequestReturns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RequestReturnsResponseObject); ok {
+		if err := validResponse.VisitRequestReturnsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

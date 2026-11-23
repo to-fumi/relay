@@ -21,6 +21,14 @@ type Repository interface {
 	Get(ctx context.Context, id uuid.UUID) (Handoff, error)
 	// SaveReturn は h の返却日時を記録する。すでに返却済みの場合は ErrAlreadyReturned を返す。
 	SaveReturn(ctx context.Context, h Handoff) error
+	// GetMany は ids の受け渡しを ids の順に返す。1 件でも見つからない場合は ErrNotFound を返す。
+	GetMany(ctx context.Context, ids []uuid.UUID) ([]Handoff, error)
+	// SaveReturnRequests は hs の返却を送った日時をまとめて記録する。
+	// 1 件でも返却済みか承認待ちになっていた場合は、どれも記録せずに ErrAlreadyReturned を返す。
+	SaveReturnRequests(ctx context.Context, hs []Handoff) error
+	// SaveConfirmedReturns は hs の返却日時をまとめて記録する。
+	// 1 件でも返却済みか承認待ちでなくなっていた場合は、どれも記録せずに ErrAlreadyReturned を返す。
+	SaveConfirmedReturns(ctx context.Context, hs []Handoff) error
 	// ListByUser は user が渡した、または受け取った記録を新しい順に返す。
 	ListByUser(ctx context.Context, user uuid.UUID, limit int) ([]Handoff, error)
 	// ListOutstandingByUser は user が渡した、または受け取った記録のうち、
